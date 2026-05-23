@@ -7,7 +7,7 @@ const {
   Client,
   GatewayIntentBits,
   SlashCommandBuilder,
-  REST,
+ REST,
   Routes,
   EmbedBuilder
 } = require("discord.js");
@@ -37,11 +37,14 @@ const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
 
 /* =========================
-   DOWNLOAD LINK
+   LINKS
 ========================= */
 
 const DOWNLOAD_LINK =
   "https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file";
+
+const SETUP_LINK =
+  "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
 /* =========================
    KEY STORAGE
@@ -396,9 +399,15 @@ bot.on(
             },
             {
               name:
-                "📥 Extension Download",
+                "📥 Download Extension",
               value:
                 DOWNLOAD_LINK
+            },
+            {
+              name:
+                "📚 Setup Tutorial",
+              value:
+                SETUP_LINK
             },
             {
               name:
@@ -453,6 +462,12 @@ bot.on(
                 "📥 Download",
               value:
                 DOWNLOAD_LINK
+            },
+            {
+              name:
+                "📚 Setup Guide",
+              value:
+                SETUP_LINK
             }
           )
           .setColor(0x57F287)
