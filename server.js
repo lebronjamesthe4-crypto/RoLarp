@@ -124,13 +124,24 @@ bot.on("interactionCreate", async interaction => {
 
     VALID_KEYS.push(key);
 
-    await interaction.reply({
-      content:
-`✅ Generated Key:
+   const embed = new EmbedBuilder()
+  .setTitle("🔑 License Key Generated")
+  .setDescription(
+`Your new extension key has been generated.
 
-\`${key}\``,
-      ephemeral: true
-    });
+## Key
+\`${key}\``
+  )
+  .setColor(0x5865F2)
+  .setFooter({
+    text: "RoLarp Licensing System"
+  })
+  .setTimestamp();
+
+await interaction.reply({
+  embeds: [embed],
+  ephemeral: true
+});
 
   }
 
