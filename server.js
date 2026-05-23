@@ -1,7 +1,9 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-const fs = require("fs");
+const mongoose = require("mongoose");
 
 const {
   Client,
@@ -13,18 +15,33 @@ const {
 } = require("discord.js");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
 /* =========================
+   MONGODB
+========================= */
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("🟢 MongoDB connected"))
+  .catch(err => console.error("Mongo error:", err));
+
+const keySchema = new mongoose.Schema({
+  userId: String,
+  key: String,
+  expires: Number,
+  duration: String
+});
+
+const Key = mongoose.model("Key", keySchema);
+
+/* =========================
    DISCORD CONFIG
 ========================= */
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
 
@@ -37,72 +54,35 @@ const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
 
 /* =========================
-   KEY STORAGE (FIXED)
+   EXPRESS API (/validate)
 ========================= */
 
-const KEYS_FILE = "./keys.json";
-
-/* load keys from disk */
-function loadKeys() {
+app.post("/validate", async (req, res) => {
   try {
-    if (!fs.existsSync(KEYS_FILE)) {
-      fs.writeFileSync(KEYS_FILE, "[]");
+    const { key } = req.body;
+
+    const foundKey = await Key.findOne({ key });
+
+    if (!foundKey) {
+      return res.json({ valid: false, error: "Invalid key" });
     }
-    return JSON.parse(fs.readFileSync(KEYS_FILE, "utf8"));
-  } catch (e) {
-    console.error("loadKeys error:", e);
-    return [];
-  }
-}
 
-/* save keys to disk */
-function saveKeys(keys) {
-  try {
-    fs.writeFileSync(KEYS_FILE, JSON.stringify(keys, null, 2));
-  } catch (e) {
-    console.error("saveKeys error:", e);
-  }
-}
+    if (foundKey.expires && Date.now() > foundKey.expires) {
+      return res.json({ valid: false, error: "License expired" });
+    }
 
-/* =========================
-   EXPRESS API
-========================= */
-
-app.post("/validate", (req, res) => {
-  const { key } = req.body;
-
-  if (!key) {
-    return res.json({ valid: false, error: "No key provided" });
-  }
-
-  const normalized = key.trim().toUpperCase();
-  const keys = loadKeys();
-
-  const foundKey = keys.find(k =>
-    k.key.toUpperCase() === normalized
-  );
-
-  if (!foundKey) {
     return res.json({
-      valid: false,
-      error: "Invalid key"
+      valid: true,
+      userId: foundKey.userId,
+      expires: foundKey.expires,
+      sessionToken: crypto.randomUUID(),
+      sessionExp: Date.now() + 15 * 60 * 1000
     });
-  }
 
-  if (foundKey.expires && Date.now() > foundKey.expires) {
-    return res.json({
-      valid: false,
-      error: "License expired"
-    });
+  } catch (err) {
+    console.error(err);
+    return res.json({ valid: false, error: "Server error" });
   }
-
-  return res.json({
-    valid: true,
-    discord: foundKey.userId || "Licensed User",
-    expires: foundKey.expires,
-    sessionToken: crypto.randomUUID(),
-    sessionExp: Date.now() + (15 * 60 * 1000)
-  });
 });
 
 /* =========================
@@ -114,7 +94,7 @@ const bot = new Client({
 });
 
 bot.once("ready", () => {
-  console.log(`✅ Bot logged in as ${bot.user.tag}`);
+  console.log(`✅ Logged in as ${bot.user.tag}`);
 });
 
 /* =========================
@@ -125,14 +105,12 @@ const commands = [
   new SlashCommandBuilder()
     .setName("genkey")
     .setDescription("Generate a license key")
-    .addUserOption(option =>
-      option.setName("user")
-        .setDescription("Customer")
-        .setRequired(true)
+    .addUserOption(opt =>
+      opt.setName("user").setDescription("User").setRequired(true)
     )
-    .addStringOption(option =>
-      option.setName("duration")
-        .setDescription("License duration")
+    .addStringOption(opt =>
+      opt.setName("duration")
+        .setDescription("Duration")
         .setRequired(true)
         .addChoices(
           { name: "1 Month", value: "1month" },
@@ -143,17 +121,23 @@ const commands = [
   new SlashCommandBuilder()
     .setName("license")
     .setDescription("View your license")
-].map(cmd => cmd.toJSON());
+].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+
+/* =========================
+   REGISTER COMMANDS
+========================= */
 
 (async () => {
   try {
     console.log("🔄 Registering slash commands...");
+
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
+
     console.log("✅ Slash commands registered.");
   } catch (err) {
     console.error(err);
@@ -161,149 +145,130 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 })();
 
 /* =========================
-   COMMAND HANDLER
+   INTERACTIONS
 ========================= */
 
-bot.on("interactionCreate", async interaction => {
+bot.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  /* =========================
-     /GENKEY
-  ========================= */
+  try {
 
-  if (interaction.commandName === "genkey") {
-    const member = interaction.member;
+    /* =========================
+       /GENKEY
+    ========================= */
+    if (interaction.commandName === "genkey") {
 
-    const canGenerate =
-      member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
-      member.roles.cache.has(ADMIN_ROLE_ID);
+      await interaction.deferReply();
 
-    if (!canGenerate) {
-      return interaction.reply({
-        content: "❌ You do not have permission to generate keys.",
-        ephemeral: true
+      const member = interaction.member;
+
+      const canGenerate =
+        member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
+        member.roles.cache.has(ADMIN_ROLE_ID);
+
+      if (!canGenerate) {
+        return interaction.editReply("❌ No permission.");
+      }
+
+      const targetUser = interaction.options.getUser("user");
+      const duration = interaction.options.getString("duration");
+
+      const guildMember = await interaction.guild.members.fetch(targetUser.id);
+
+      const key =
+        "LARP-" +
+        crypto.randomBytes(4).toString("hex").toUpperCase() +
+        "-" +
+        crypto.randomBytes(2).toString("hex").toUpperCase() +
+        "-" +
+        crypto.randomBytes(2).toString("hex").toUpperCase();
+
+      let expires = null;
+      let expiresText = "Never";
+
+      if (duration === "1month") {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        expires = d.getTime();
+        expiresText = d.toLocaleDateString();
+      }
+
+      await Key.create({
+        userId: targetUser.id,
+        key,
+        expires,
+        duration
+      });
+
+      // GIVE ROLE
+      if (!guildMember.roles.cache.has(CUSTOMER_ROLE_ID)) {
+        await guildMember.roles.add(CUSTOMER_ROLE_ID);
+      }
+
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🔑 Key Generated")
+            .setDescription(`Key sent to ${targetUser}`)
+            .addFields(
+              { name: "Key", value: `\`${key}\`` },
+              { name: "Duration", value: duration },
+              { name: "Expires", value: expiresText }
+            )
+            .setColor(0x5865F2)
+        ]
       });
     }
 
-    const targetUser = interaction.options.getUser("user");
-    const duration = interaction.options.getString("duration");
+    /* =========================
+       /LICENSE
+    ========================= */
+    if (interaction.commandName === "license") {
 
-    const key =
-      "LARP-" +
-      crypto.randomBytes(4).toString("hex").toUpperCase() +
-      "-" +
-      crypto.randomBytes(2).toString("hex").toUpperCase() +
-      "-" +
-      crypto.randomBytes(2).toString("hex").toUpperCase();
+      await interaction.deferReply({ ephemeral: true });
 
-    let expires = null;
-    let expiresText = "Never";
+      const foundKey = await Key.findOne({
+        userId: interaction.user.id
+      });
 
-    if (duration === "1month") {
-      const expireDate = new Date();
-      expireDate.setMonth(expireDate.getMonth() + 1);
-      expires = expireDate.getTime();
-      expiresText = expireDate.toLocaleDateString();
-    }
+      if (!foundKey) {
+        return interaction.editReply("❌ No license found.");
+      }
 
-    const keys = loadKeys();
+      const expired =
+        foundKey.expires && Date.now() > foundKey.expires;
 
-    keys.push({
-      userId: targetUser.id,
-      key,
-      expires,
-      duration
-    });
-
-    saveKeys(keys);
-
-    const embed = new EmbedBuilder()
-      .setTitle("🔑 License Delivered")
-      .setDescription(`${targetUser} has received a license key.`)
-      .addFields(
-        { name: "📦 License Key", value: `\`${key}\`` },
-        {
-          name: "⏳ Duration",
-          value: duration === "1month" ? "1 Month" : "Lifetime",
-          inline: true
-        },
-        { name: "📅 Expires", value: expiresText, inline: true },
-        { name: "✅ Status", value: "Active", inline: true }
-      )
-      .setColor(0x5865F2)
-      .setFooter({ text: "RoLarp Licensing System" })
-      .setTimestamp();
-
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  /* =========================
-     /LICENSE
-  ========================= */
-
-  if (interaction.commandName === "license") {
-    const member = interaction.member;
-
-    if (!member.roles.cache.has(CUSTOMER_ROLE_ID)) {
-      return interaction.reply({
-        content: "❌ You do not have access to this command.",
-        ephemeral: true
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🔐 Your License")
+            .addFields(
+              { name: "Key", value: `\`${foundKey.key}\`` },
+              { name: "Duration", value: foundKey.duration },
+              { name: "Status", value: expired ? "Expired" : "Active" }
+            )
+            .setColor(0x5865F2)
+        ]
       });
     }
 
-    const keys = loadKeys();
+  } catch (err) {
+    console.error("COMMAND ERROR:", err);
 
-    const foundKey = keys.find(k =>
-      k.userId === interaction.user.id
-    );
-
-    if (!foundKey) {
-      return interaction.reply({
-        content: "❌ No license found.",
-        ephemeral: true
-      });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply("❌ Error occurred.");
+    } else {
+      await interaction.reply({ content: "❌ Error occurred.", ephemeral: true });
     }
-
-    const expired =
-      foundKey.expires && Date.now() > foundKey.expires;
-
-    const expiresText = foundKey.expires
-      ? new Date(foundKey.expires).toLocaleDateString()
-      : "Never";
-
-    const embed = new EmbedBuilder()
-      .setTitle("🔐 Your License")
-      .addFields(
-        { name: "📦 License Key", value: `\`${foundKey.key}\`` },
-        {
-          name: "⏳ Duration",
-          value: foundKey.duration === "1month" ? "1 Month" : "Lifetime",
-          inline: true
-        },
-        { name: "📅 Expires", value: expiresText, inline: true },
-        {
-          name: "✅ Status",
-          value: expired ? "Expired" : "Active",
-          inline: true
-        }
-      )
-      .setColor(0x5865F2)
-      .setFooter({ text: "RoLarp Licensing System" })
-      .setTimestamp();
-
-    return interaction.reply({
-      embeds: [embed],
-      ephemeral: true
-    });
   }
 });
-
-bot.login(DISCORD_TOKEN);
 
 /* =========================
    START SERVER
 ========================= */
 
 app.listen(PORT, () => {
-  console.log(`🚀 Key server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
+
+bot.login(DISCORD_TOKEN);
