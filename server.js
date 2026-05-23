@@ -62,7 +62,7 @@ const SETUP_LINK =
   "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
 /* =========================
-   EXPRESS VALIDATION API
+   EXPRESS API
 ========================= */
 
 app.post("/validate", async (req, res) => {
@@ -169,7 +169,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("revokekey")
-    .setDescription("Revoke a user's key")
+    .setDescription("Revoke a user's license")
     .addUserOption(option =>
       option.setName("user")
         .setDescription("User")
@@ -187,7 +187,10 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
     console.log("🔄 Registering commands...");
 
     await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      Routes.applicationGuildCommands(
+        CLIENT_ID,
+        GUILD_ID
+      ),
       { body: commands }
     );
 
@@ -226,47 +229,67 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const targetUser = interaction.options.getUser("user");
-    const duration = interaction.options.getString("duration");
+    const targetUser =
+      interaction.options.getUser("user");
+
+    const duration =
+      interaction.options.getString("duration");
 
     const key =
       "LARP-" +
-      crypto.randomBytes(4).toString("hex").toUpperCase();
+      crypto.randomBytes(4)
+        .toString("hex")
+        .toUpperCase();
 
     let expires = null;
     let expiresText = "Never";
 
-    /* 1 DAY */
+    /* =========================
+       1 DAY
+    ========================= */
 
     if (duration === "1day") {
 
       const d = new Date();
+
       d.setDate(d.getDate() + 1);
 
       expires = d.getTime();
-      expiresText = d.toLocaleDateString();
+
+      expiresText =
+        d.toLocaleDateString();
     }
 
-    /* 7 DAYS */
+    /* =========================
+       7 DAYS
+    ========================= */
 
-    if (duration === "7days") {
+    else if (duration === "7days") {
 
       const d = new Date();
+
       d.setDate(d.getDate() + 7);
 
       expires = d.getTime();
-      expiresText = d.toLocaleDateString();
+
+      expiresText =
+        d.toLocaleDateString();
     }
 
-    /* 1 MONTH */
+    /* =========================
+       1 MONTH
+    ========================= */
 
-    if (duration === "1month") {
+    else if (duration === "1month") {
 
       const d = new Date();
+
       d.setMonth(d.getMonth() + 1);
 
       expires = d.getTime();
-      expiresText = d.toLocaleDateString();
+
+      expiresText =
+        d.toLocaleDateString();
     }
 
     await LicenseKey.create({
@@ -277,6 +300,10 @@ bot.on("interactionCreate", async interaction => {
       hwid: null,
       lastReset: 0
     });
+
+    /* =========================
+       DM EMBED
+    ========================= */
 
     const dmEmbed = new EmbedBuilder()
       .setTitle("🔐 Your License")
@@ -304,24 +331,29 @@ bot.on("interactionCreate", async interaction => {
       })
       .setTimestamp();
 
-    const channelEmbed = new EmbedBuilder()
-      .setTitle("✅ License Generated")
-      .setColor(0x57F287)
-      .addFields(
-        {
-          name: "👤 User",
-          value: `${targetUser}`
-        },
-        {
-          name: "🔑 License Key",
-          value: `\`${key}\``
-        },
-        {
-          name: "📅 Expires",
-          value: expiresText
-        }
-      )
-      .setTimestamp();
+    /* =========================
+       CHANNEL EMBED
+    ========================= */
+
+    const channelEmbed =
+      new EmbedBuilder()
+        .setTitle("✅ License Generated")
+        .setColor(0x57F287)
+        .addFields(
+          {
+            name: "👤 User",
+            value: `${targetUser}`
+          },
+          {
+            name: "🔑 License Key",
+            value: `\`${key}\``
+          },
+          {
+            name: "📅 Expires",
+            value: expiresText
+          }
+        )
+        .setTimestamp();
 
     try {
 
@@ -331,7 +363,9 @@ bot.on("interactionCreate", async interaction => {
 
     } catch {
 
-      console.log("Could not DM user");
+      console.log(
+        "❌ Could not DM user"
+      );
 
     }
 
@@ -346,9 +380,10 @@ bot.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "license") {
 
-    const foundKey = await LicenseKey.findOne({
-      userId: interaction.user.id
-    });
+    const foundKey =
+      await LicenseKey.findOne({
+        userId: interaction.user.id
+      });
 
     if (!foundKey) {
       return interaction.reply({
@@ -361,34 +396,42 @@ bot.on("interactionCreate", async interaction => {
       foundKey.expires &&
       Date.now() > foundKey.expires;
 
-    const expiresText = foundKey.expires
-      ? new Date(foundKey.expires).toLocaleDateString()
-      : "Never";
+    const expiresText =
+      foundKey.expires
+        ? new Date(
+            foundKey.expires
+          ).toLocaleDateString()
+        : "Never";
 
-    const embed = new EmbedBuilder()
-      .setTitle("🔐 Your License")
-      .setColor(0x5865F2)
-      .addFields(
-        {
-          name: "🔑 License Key",
-          value: `\`${foundKey.key}\``
-        },
-        {
-          name: "📅 Expires",
-          value: expiresText,
-          inline: true
-        },
-        {
-          name: "✅ Status",
-          value: expired ? "Expired" : "Active",
-          inline: true
-        },
-        {
-          name: "🖥️ HWID",
-          value: foundKey.hwid || "Not Bound"
-        }
-      )
-      .setTimestamp();
+    const embed =
+      new EmbedBuilder()
+        .setTitle("🔐 Your License")
+        .setColor(0x5865F2)
+        .addFields(
+          {
+            name: "🔑 License Key",
+            value: `\`${foundKey.key}\``
+          },
+          {
+            name: "📅 Expires",
+            value: expiresText,
+            inline: true
+          },
+          {
+            name: "✅ Status",
+            value: expired
+              ? "Expired"
+              : "Active",
+            inline: true
+          },
+          {
+            name: "🖥️ HWID",
+            value:
+              foundKey.hwid ||
+              "Not Bound"
+          }
+        )
+        .setTimestamp();
 
     return interaction.reply({
       embeds: [embed],
@@ -400,11 +443,15 @@ bot.on("interactionCreate", async interaction => {
      /RESETHWID
   ========================= */
 
-  if (interaction.commandName === "resethwid") {
+  if (
+    interaction.commandName ===
+    "resethwid"
+  ) {
 
-    const foundKey = await LicenseKey.findOne({
-      userId: interaction.user.id
-    });
+    const foundKey =
+      await LicenseKey.findOne({
+        userId: interaction.user.id
+      });
 
     if (!foundKey) {
       return interaction.reply({
@@ -413,30 +460,40 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const cooldown = 24 * 60 * 60 * 1000;
+    const cooldown =
+      24 * 60 * 60 * 1000;
+
     const now = Date.now();
 
     if (
-      now - (foundKey.lastReset || 0) < cooldown
+      now -
+        (foundKey.lastReset || 0) <
+      cooldown
     ) {
 
       const remaining =
-        cooldown - (now - foundKey.lastReset);
+        cooldown -
+        (now -
+          foundKey.lastReset);
 
       return interaction.reply({
         content:
-          `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting again.`,
+          `⏳ Wait ${Math.ceil(
+            remaining / 3600000
+          )} hours before resetting again.`,
         ephemeral: true
       });
     }
 
     foundKey.hwid = null;
+
     foundKey.lastReset = now;
 
     await foundKey.save();
 
     return interaction.reply({
-      content: "✅ HWID reset successfully",
+      content:
+        "✅ HWID reset successfully",
       ephemeral: true
     });
   }
@@ -450,8 +507,12 @@ bot.on("interactionCreate", async interaction => {
     const member = interaction.member;
 
     const allowed =
-      member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
-      member.roles.cache.has(ADMIN_ROLE_ID);
+      member.roles.cache.has(
+        MANAGEMENT_ROLE_ID
+      ) ||
+      member.roles.cache.has(
+        ADMIN_ROLE_ID
+      );
 
     if (!allowed) {
       return interaction.reply({
@@ -460,13 +521,17 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const keys = await LicenseKey.find().limit(20);
+    const keys =
+      await LicenseKey.find().limit(20);
 
     const formatted = keys.map(k => {
 
-      const expires = k.expires
-        ? new Date(k.expires).toLocaleDateString()
-        : "Never";
+      const expires =
+        k.expires
+          ? new Date(
+              k.expires
+            ).toLocaleDateString()
+          : "Never";
 
       return `🔑 ${k.key}
 👤 <@${k.userId}>
@@ -477,7 +542,9 @@ bot.on("interactionCreate", async interaction => {
     }).join("\n");
 
     return interaction.reply({
-      content: formatted || "No keys found",
+      content:
+        formatted ||
+        "No keys found",
       ephemeral: true
     });
   }
@@ -486,13 +553,20 @@ bot.on("interactionCreate", async interaction => {
      /REVOKEKEY
   ========================= */
 
-  if (interaction.commandName === "revokekey") {
+  if (
+    interaction.commandName ===
+    "revokekey"
+  ) {
 
     const member = interaction.member;
 
     const allowed =
-      member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
-      member.roles.cache.has(ADMIN_ROLE_ID);
+      member.roles.cache.has(
+        MANAGEMENT_ROLE_ID
+      ) ||
+      member.roles.cache.has(
+        ADMIN_ROLE_ID
+      );
 
     if (!allowed) {
       return interaction.reply({
@@ -501,20 +575,26 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const targetUser = interaction.options.getUser("user");
+    const targetUser =
+      interaction.options.getUser(
+        "user"
+      );
 
-    const foundKey = await LicenseKey.findOne({
-      userId: targetUser.id
-    });
+    const foundKey =
+      await LicenseKey.findOne({
+        userId: targetUser.id
+      });
 
     if (!foundKey) {
       return interaction.reply({
-        content: "❌ No key found for that user",
+        content:
+          "❌ No key found for that user",
         ephemeral: true
       });
     }
 
-    const revokedKey = foundKey.key;
+    const revokedKey =
+      foundKey.key;
 
     await LicenseKey.deleteOne({
       userId: targetUser.id
@@ -525,13 +605,17 @@ bot.on("interactionCreate", async interaction => {
       await targetUser.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle("❌ License Revoked")
+            .setTitle(
+              "❌ License Revoked"
+            )
             .setDescription(
               "Your RoLarp license has been revoked."
             )
             .addFields({
-              name: "🔑 Revoked Key",
-              value: `\`${revokedKey}\``
+              name:
+                "🔑 Revoked Key",
+              value:
+                `\`${revokedKey}\``
             })
             .setColor(0xED4245)
         ]
@@ -539,18 +623,26 @@ bot.on("interactionCreate", async interaction => {
 
     } catch {
 
-      console.log("Could not DM revoked user");
+      console.log(
+        "❌ Could not DM revoked user"
+      );
 
     }
 
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setTitle("✅ License Revoked")
-          .setDescription(`${targetUser}'s license was revoked.`)
+          .setTitle(
+            "✅ License Revoked"
+          )
+          .setDescription(
+            `${targetUser}'s license was revoked.`
+          )
           .addFields({
-            name: "🔑 Revoked Key",
-            value: `\`${revokedKey}\``
+            name:
+              "🔑 Revoked Key",
+            value:
+              `\`${revokedKey}\``
           })
           .setColor(0xED4245)
       ]
@@ -566,5 +658,7 @@ bot.login(DISCORD_TOKEN);
 ========================= */
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(
+    `🚀 Server running on ${PORT}`
+  );
 });
