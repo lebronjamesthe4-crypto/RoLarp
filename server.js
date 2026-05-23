@@ -1,13 +1,14 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-const fs = require("fs");
+
+const mongoose = require("mongoose");
 
 const {
   Client,
   GatewayIntentBits,
   SlashCommandBuilder,
- REST,
+  REST,
   Routes,
   EmbedBuilder
 } = require("discord.js");
@@ -20,6 +21,29 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* =========================
+   MONGO CONNECTION
+========================= */
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch(err => console.error("MongoDB error:", err));
+
+/* =========================
+   DATABASE SCHEMA
+========================= */
+
+const KeySchema = new mongoose.Schema({
+  userId: String,
+  key: String,
+  expires: Number,
+  duration: String,
+  hwid: String,
+  lastReset: Number
+});
+
+const LicenseKey = mongoose.model("LicenseKey", KeySchema);
+
+/* =========================
    DISCORD CONFIG
 ========================= */
 
@@ -27,10 +51,6 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
-
-/* =========================
-   ROLE IDS
-========================= */
 
 const CUSTOMER_ROLE_ID = "1507145590528540822";
 const MANAGEMENT_ROLE_ID = "1507127911897890856";
@@ -47,123 +67,44 @@ const SETUP_LINK =
   "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
 /* =========================
-   KEY STORAGE
+   EXPRESS VALIDATION API
 ========================= */
 
-const KEYS_FILE = "./keys.json";
-
-/* load keys */
-function loadKeys() {
-
-  try {
-
-    if (!fs.existsSync(KEYS_FILE)) {
-      fs.writeFileSync(KEYS_FILE, "[]");
-    }
-
-    return JSON.parse(
-      fs.readFileSync(KEYS_FILE, "utf8")
-    );
-
-  } catch (e) {
-
-    console.error("loadKeys error:", e);
-
-    return [];
-  }
-}
-
-/* save keys */
-function saveKeys(keys) {
-
-  try {
-
-    fs.writeFileSync(
-      KEYS_FILE,
-      JSON.stringify(keys, null, 2)
-    );
-
-  } catch (e) {
-
-    console.error("saveKeys error:", e);
-  }
-}
-
-/* =========================
-   EXPRESS API
-========================= */
-
-app.post("/validate", (req, res) => {
+app.post("/validate", async (req, res) => {
 
   const { key, hwid } = req.body;
 
   if (!key) {
-    return res.json({
-      valid: false,
-      error: "No key provided"
-    });
+    return res.json({ valid: false, error: "No key" });
   }
 
-  const normalized =
-    key.trim().toUpperCase();
+  const normalized = key.trim().toUpperCase();
 
-  const keys = loadKeys();
-
-  const foundKey = keys.find(
-    k =>
-      k.key.toUpperCase() ===
-      normalized
-  );
+  const foundKey = await LicenseKey.findOne({ key: normalized });
 
   if (!foundKey) {
-    return res.json({
-      valid: false,
-      error: "Invalid key"
-    });
+    return res.json({ valid: false, error: "Invalid key" });
   }
 
-  if (
-    foundKey.expires &&
-    Date.now() > foundKey.expires
-  ) {
-    return res.json({
-      valid: false,
-      error: "License expired"
-    });
+  if (foundKey.expires && Date.now() > foundKey.expires) {
+    return res.json({ valid: false, error: "Expired" });
   }
 
-  /* HWID CHECK */
-
-  if (
-    foundKey.hwid &&
-    foundKey.hwid !== hwid
-  ) {
-    return res.json({
-      valid: false,
-      error: "HWID mismatch"
-    });
+  if (foundKey.hwid && foundKey.hwid !== hwid) {
+    return res.json({ valid: false, error: "HWID mismatch" });
   }
-
-  /* FIRST DEVICE LOCK */
 
   if (!foundKey.hwid && hwid) {
-
     foundKey.hwid = hwid;
-
-    saveKeys(keys);
+    await foundKey.save();
   }
 
   return res.json({
     valid: true,
-    discord:
-      foundKey.userId ||
-      "Licensed User",
+    user: foundKey.userId,
     expires: foundKey.expires,
-    sessionToken:
-      crypto.randomUUID(),
-    sessionExp:
-      Date.now() +
-      (15 * 60 * 1000)
+    sessionToken: crypto.randomUUID(),
+    sessionExp: Date.now() + (15 * 60 * 1000)
   });
 });
 
@@ -176,517 +117,214 @@ const bot = new Client({
 });
 
 bot.once("ready", () => {
-
-  console.log(
-    `✅ Bot logged in as ${bot.user.tag}`
-  );
-
+  console.log(`✅ Bot logged in as ${bot.user.tag}`);
 });
 
 /* =========================
-   SLASH COMMANDS
+   COMMANDS
 ========================= */
 
 const commands = [
-
   new SlashCommandBuilder()
     .setName("genkey")
-    .setDescription(
-      "Generate a license key"
-    )
-    .addUserOption(option =>
-      option
-        .setName("user")
-        .setDescription(
-          "Customer"
-        )
+    .setDescription("Generate license key")
+    .addUserOption(o =>
+      o.setName("user")
+        .setDescription("User")
         .setRequired(true)
     )
-    .addStringOption(option =>
-      option
-        .setName("duration")
-        .setDescription(
-          "License duration"
-        )
+    .addStringOption(o =>
+      o.setName("duration")
+        .setDescription("Duration")
         .setRequired(true)
         .addChoices(
-          {
-            name: "1 Month",
-            value: "1month"
-          },
-          {
-            name: "Lifetime",
-            value: "lifetime"
-          }
+          { name: "1 Month", value: "1month" },
+          { name: "Lifetime", value: "lifetime" }
         )
     ),
 
   new SlashCommandBuilder()
     .setName("license")
-    .setDescription(
-      "View your license"
-    ),
+    .setDescription("View license"),
 
   new SlashCommandBuilder()
     .setName("resethwid")
-    .setDescription(
-      "Reset your HWID"
-    )
+    .setDescription("Reset HWID")
+].map(c => c.toJSON());
 
-].map(cmd => cmd.toJSON());
-
-const rest = new REST({
-  version: "10"
-}).setToken(DISCORD_TOKEN);
+const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 
 (async () => {
-
-  try {
-
-    console.log(
-      "🔄 Registering slash commands..."
-    );
-
-    await rest.put(
-      Routes.applicationGuildCommands(
-        CLIENT_ID,
-        GUILD_ID
-      ),
-      { body: commands }
-    );
-
-    console.log(
-      "✅ Slash commands registered."
-    );
-
-  } catch (err) {
-
-    console.error(err);
-  }
-
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
 })();
 
 /* =========================
-   COMMAND HANDLER
+   BOT LOGIC
 ========================= */
 
-bot.on(
-  "interactionCreate",
-  async interaction => {
+bot.on("interactionCreate", async interaction => {
+
+  if (!interaction.isChatInputCommand()) return;
+
+  /* =========================
+     GENKEY
+  ========================= */
+
+  if (interaction.commandName === "genkey") {
+
+    const member = interaction.member;
 
     if (
-      !interaction.isChatInputCommand()
-    ) return;
-
-    /* =========================
-       /GENKEY
-    ========================= */
-
-    if (
-      interaction.commandName ===
-      "genkey"
+      !member.roles.cache.has(MANAGEMENT_ROLE_ID) &&
+      !member.roles.cache.has(ADMIN_ROLE_ID)
     ) {
-
-      const member =
-        interaction.member;
-
-      const canGenerate =
-        member.roles.cache.has(
-          MANAGEMENT_ROLE_ID
-        ) ||
-        member.roles.cache.has(
-          ADMIN_ROLE_ID
-        );
-
-      if (!canGenerate) {
-
-        return interaction.reply({
-          content:
-            "❌ You do not have permission to generate keys.",
-          ephemeral: true
-        });
-      }
-
-      const targetUser =
-        interaction.options.getUser(
-          "user"
-        );
-
-      const duration =
-        interaction.options.getString(
-          "duration"
-        );
-
-      const key =
-        "LARP-" +
-        crypto.randomBytes(4)
-          .toString("hex")
-          .toUpperCase() +
-        "-" +
-        crypto.randomBytes(2)
-          .toString("hex")
-          .toUpperCase() +
-        "-" +
-        crypto.randomBytes(2)
-          .toString("hex")
-          .toUpperCase();
-
-      let expires = null;
-      let expiresText = "Never";
-
-      if (duration === "1month") {
-
-        const expireDate =
-          new Date();
-
-        expireDate.setMonth(
-          expireDate.getMonth() + 1
-        );
-
-        expires =
-          expireDate.getTime();
-
-        expiresText =
-          expireDate.toLocaleDateString();
-      }
-
-      const keys = loadKeys();
-
-      keys.push({
-        userId: targetUser.id,
-        key,
-        expires,
-        duration,
-        hwid: null,
-        lastReset: 0
-      });
-
-      saveKeys(keys);
-
-      /* DM EMBED */
-
-      const dmEmbed =
-        new EmbedBuilder()
-          .setTitle(
-            "🔐 Your License Key"
-          )
-          .setDescription(
-            "Thank you for purchasing RoLarp.\n\nKeep your license private."
-          )
-          .addFields(
-            {
-              name:
-                "🔑 License Key",
-              value:
-                `\`${key}\``
-            },
-            {
-              name:
-                "⏳ Duration",
-              value:
-                duration ===
-                "1month"
-                  ? "1 Month"
-                  : "Lifetime",
-              inline: true
-            },
-            {
-              name:
-                "📅 Expires",
-              value:
-                expiresText,
-              inline: true
-            },
-            {
-              name:
-                "📥 Download Extension",
-              value:
-                DOWNLOAD_LINK
-            },
-            {
-              name:
-                "📚 Setup Tutorial",
-              value:
-                SETUP_LINK
-            },
-            {
-              name:
-                "🛡️ HWID Protection",
-              value:
-                "Your key locks to your first device."
-            }
-          )
-          .setColor(0x5865F2)
-          .setFooter({
-            text:
-              "RoLarp Licensing System"
-          })
-          .setTimestamp();
-
-      /* TICKET EMBED */
-
-      const ticketEmbed =
-        new EmbedBuilder()
-          .setTitle(
-            "✅ License Generated"
-          )
-          .setDescription(
-            `${targetUser} has been issued a license key.`
-          )
-          .addFields(
-            {
-              name:
-                "🔑 License Key",
-              value:
-                `\`${key}\``
-            },
-            {
-              name:
-                "⏳ Duration",
-              value:
-                duration ===
-                "1month"
-                  ? "1 Month"
-                  : "Lifetime",
-              inline: true
-            },
-            {
-              name:
-                "📅 Expires",
-              value:
-                expiresText,
-              inline: true
-            },
-            {
-              name:
-                "📥 Download",
-              value:
-                DOWNLOAD_LINK
-            },
-            {
-              name:
-                "📚 Setup Guide",
-              value:
-                SETUP_LINK
-            }
-          )
-          .setColor(0x57F287)
-          .setFooter({
-            text:
-              "RoLarp Licensing System"
-          })
-          .setTimestamp();
-
-      try {
-
-        /* SEND DM */
-
-        await targetUser.send({
-          embeds: [dmEmbed]
-        });
-
-        /* SEND IN TICKET */
-
-        return interaction.reply({
-          embeds: [ticketEmbed]
-        });
-
-      } catch (err) {
-
-        return interaction.reply({
-          content:
-            `❌ Could not DM ${targetUser}.\n` +
-            `Their DMs may be disabled.`,
-          ephemeral: true
-        });
-      }
-    }
-
-    /* =========================
-       /LICENSE
-    ========================= */
-
-    if (
-      interaction.commandName ===
-      "license"
-    ) {
-
-      const member =
-        interaction.member;
-
-      if (
-        !member.roles.cache.has(
-          CUSTOMER_ROLE_ID
-        )
-      ) {
-
-        return interaction.reply({
-          content:
-            "❌ You do not have access to this command.",
-          ephemeral: true
-        });
-      }
-
-      const keys = loadKeys();
-
-      const foundKey = keys.find(
-        k =>
-          k.userId ===
-          interaction.user.id
-      );
-
-      if (!foundKey) {
-
-        return interaction.reply({
-          content:
-            "❌ No license found.",
-          ephemeral: true
-        });
-      }
-
-      const expired =
-        foundKey.expires &&
-        Date.now() >
-          foundKey.expires;
-
-      const expiresText =
-        foundKey.expires
-          ? new Date(
-              foundKey.expires
-            ).toLocaleDateString()
-          : "Never";
-
-      const embed =
-        new EmbedBuilder()
-          .setTitle(
-            "🔐 Your License"
-          )
-          .addFields(
-            {
-              name:
-                "📦 License Key",
-              value:
-                `\`${foundKey.key}\``
-            },
-            {
-              name:
-                "⏳ Duration",
-              value:
-                foundKey.duration ===
-                "1month"
-                  ? "1 Month"
-                  : "Lifetime",
-              inline: true
-            },
-            {
-              name:
-                "📅 Expires",
-              value:
-                expiresText,
-              inline: true
-            },
-            {
-              name:
-                "✅ Status",
-              value:
-                expired
-                  ? "Expired"
-                  : "Active",
-              inline: true
-            }
-          )
-          .setColor(0x5865F2)
-          .setFooter({
-            text:
-              "RoLarp Licensing System"
-          })
-          .setTimestamp();
-
       return interaction.reply({
-        embeds: [embed],
+        content: "❌ No permission",
         ephemeral: true
       });
     }
 
-    /* =========================
-       /RESETHWID
-    ========================= */
+    const targetUser = interaction.options.getUser("user");
+    const duration = interaction.options.getString("duration");
 
-    if (
-      interaction.commandName ===
-      "resethwid"
-    ) {
+    const key =
+      "LARP-" +
+      crypto.randomBytes(4).toString("hex").toUpperCase() +
+      "-" +
+      crypto.randomBytes(2).toString("hex").toUpperCase();
 
-      const keys = loadKeys();
+    let expires = null;
+    let expiresText = "Never";
 
-      const userKey = keys.find(
-        k =>
-          k.userId ===
-          interaction.user.id
+    if (duration === "1month") {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      expires = d.getTime();
+      expiresText = d.toLocaleDateString();
+    }
+
+    await LicenseKey.create({
+      userId: targetUser.id,
+      key,
+      expires,
+      duration,
+      hwid: null,
+      lastReset: 0
+    });
+
+    /* DM */
+
+    const dmEmbed = new EmbedBuilder()
+      .setTitle("🔐 License Key")
+      .setColor(0x5865F2)
+      .addFields(
+        { name: "Key", value: `\`${key}\`` },
+        { name: "Expires", value: expiresText },
+        { name: "Download", value: DOWNLOAD_LINK },
+        { name: "Setup Guide", value: SETUP_LINK }
       );
 
-      if (!userKey) {
+    /* TICKET */
 
-        return interaction.reply({
-          content:
-            "❌ You do not have a license key.",
-          ephemeral: true
-        });
-      }
+    const ticketEmbed = new EmbedBuilder()
+      .setTitle("✅ Key Generated")
+      .setDescription(`${targetUser}`)
+      .addFields(
+        { name: "Key", value: `\`${key}\`` },
+        { name: "Download", value: DOWNLOAD_LINK }
+      );
 
-      const now = Date.now();
+    try {
+      await targetUser.send({ embeds: [dmEmbed] });
 
-      const cooldown =
-        24 * 60 * 60 * 1000;
+      return interaction.reply({ embeds: [ticketEmbed] });
 
-      if (
-        now -
-          (userKey.lastReset || 0) <
-        cooldown
-      ) {
-
-        const remaining =
-          cooldown -
-          (now -
-            userKey.lastReset);
-
-        const hours =
-          Math.ceil(
-            remaining / 3600000
-          );
-
-        return interaction.reply({
-          content:
-            `⏳ You must wait ${hours} more hour(s) before resetting again.`,
-          ephemeral: true
-        });
-      }
-
-      userKey.hwid = null;
-      userKey.lastReset = now;
-
-      saveKeys(keys);
-
+    } catch {
       return interaction.reply({
-        content:
-          "✅ HWID reset successfully.",
+        content: "❌ Could not DM user",
         ephemeral: true
       });
     }
-
   }
-);
+
+  /* =========================
+     LICENSE
+  ========================= */
+
+  if (interaction.commandName === "license") {
+
+    const foundKey = await LicenseKey.findOne({
+      userId: interaction.user.id
+    });
+
+    if (!foundKey) {
+      return interaction.reply({
+        content: "No license",
+        ephemeral: true
+      });
+    }
+
+    return interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle("License")
+          .addFields(
+            { name: "Key", value: `\`${foundKey.key}\`` },
+            { name: "Status", value: "Active" }
+          )
+      ],
+      ephemeral: true
+    });
+  }
+
+  /* =========================
+     RESETHWID
+  ========================= */
+
+  if (interaction.commandName === "resethwid") {
+
+    const foundKey = await LicenseKey.findOne({
+      userId: interaction.user.id
+    });
+
+    if (!foundKey) {
+      return interaction.reply({
+        content: "No key",
+        ephemeral: true
+      });
+    }
+
+    const cooldown = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    if (now - (foundKey.lastReset || 0) < cooldown) {
+      return interaction.reply({
+        content: "Cooldown active",
+        ephemeral: true
+      });
+    }
+
+    foundKey.hwid = null;
+    foundKey.lastReset = now;
+    await foundKey.save();
+
+    return interaction.reply({
+      content: "HWID reset",
+      ephemeral: true
+    });
+  }
+
+});
 
 bot.login(DISCORD_TOKEN);
 
 /* =========================
-   START SERVER
+   SERVER
 ========================= */
 
 app.listen(PORT, () => {
-
-  console.log(
-    `🚀 Key server running on port ${PORT}`
-  );
-
+  console.log(`Server running on ${PORT}`);
 });
