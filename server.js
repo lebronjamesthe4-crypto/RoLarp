@@ -8,7 +8,6 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  PermissionFlagsBits,
   EmbedBuilder
 } = require("discord.js");
 
@@ -28,8 +27,20 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
 
-/* CUSTOMER ROLE ID */
-const CUSTOMER_ROLE_ID = "PUT_ROLE_ID_HERE";
+/* =========================
+   ROLE IDS
+========================= */
+
+/* CUSTOMER ROLE */
+const CUSTOMER_ROLE_ID =
+  "1507145590528540822";
+
+/* ROLES THAT CAN GEN KEYS */
+const MANAGEMENT_ROLE_ID =
+  "1507127911897890856";
+
+const ADMIN_ROLE_ID =
+  "1507127797607432283";
 
 /* =========================
    VALID KEYS
@@ -101,7 +112,9 @@ const bot = new Client({
 
 bot.once("ready", () => {
 
-  console.log(`✅ Bot logged in as ${bot.user.tag}`);
+  console.log(
+    `✅ Bot logged in as ${bot.user.tag}`
+  );
 
 });
 
@@ -130,7 +143,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName("duration")
-        .setDescription("Choose license duration")
+        .setDescription("License duration")
         .setRequired(true)
         .addChoices(
           {
@@ -142,10 +155,6 @@ const commands = [
             value: "lifetime"
           }
         )
-    )
-
-    .setDefaultMemberPermissions(
-      PermissionFlagsBits.Administrator
     ),
 
   /* =========================
@@ -171,7 +180,9 @@ const rest = new REST({
 
   try {
 
-    console.log("🔄 Registering slash commands...");
+    console.log(
+      "🔄 Registering slash commands..."
+    );
 
     await rest.put(
       Routes.applicationGuildCommands(
@@ -183,7 +194,9 @@ const rest = new REST({
       }
     );
 
-    console.log("✅ Slash commands registered.");
+    console.log(
+      "✅ Slash commands registered."
+    );
 
   } catch (err) {
 
@@ -197,209 +210,262 @@ const rest = new REST({
    COMMAND HANDLER
 ========================= */
 
-bot.on("interactionCreate", async interaction => {
+bot.on(
+  "interactionCreate",
+  async interaction => {
 
-  if (!interaction.isChatInputCommand()) return;
+    if (!interaction.isChatInputCommand())
+      return;
 
-  /* =========================
-     /GENKEY
-  ========================= */
-
-  if (interaction.commandName === "genkey") {
-
-    const targetUser =
-      interaction.options.getUser("user");
-
-    const duration =
-      interaction.options.getString("duration");
-
-    const key =
-      "LARP-" +
-      crypto.randomBytes(4)
-        .toString("hex")
-        .toUpperCase() +
-      "-" +
-      crypto.randomBytes(2)
-        .toString("hex")
-        .toUpperCase() +
-      "-" +
-      crypto.randomBytes(2)
-        .toString("hex")
-        .toUpperCase();
-
-    let expires = null;
-    let expiresText = "Never";
-
-    if (duration === "1month") {
-
-      const expireDate = new Date();
-
-      expireDate.setMonth(
-        expireDate.getMonth() + 1
-      );
-
-      expires = expireDate.getTime();
-
-      expiresText =
-        expireDate.toLocaleDateString();
-
-    }
-
-    VALID_KEYS.push({
-      userId: targetUser.id,
-      key,
-      expires,
-      duration
-    });
-
-    const embed = new EmbedBuilder()
-
-      .setTitle("🔑 License Delivered")
-
-      .setDescription(
-        `${targetUser} has received a license key.`
-      )
-
-      .addFields(
-
-        {
-          name: "📦 License Key",
-          value: `\`${key}\``
-        },
-
-        {
-          name: "⏳ Duration",
-          value:
-            duration === "1month"
-              ? "1 Month"
-              : "Lifetime",
-          inline: true
-        },
-
-        {
-          name: "📅 Expires",
-          value: expiresText,
-          inline: true
-        },
-
-        {
-          name: "✅ Status",
-          value: "Active",
-          inline: true
-        }
-
-      )
-
-      .setColor(0x5865F2)
-
-      .setFooter({
-        text: "RoLarp Licensing System"
-      })
-
-      .setTimestamp();
-
-    await interaction.reply({
-      embeds: [embed]
-    });
-
-  }
-
-  /* =========================
-     /LICENSE
-  ========================= */
-
-  if (interaction.commandName === "license") {
-
-    const member = interaction.member;
+    /* =========================
+       /GENKEY
+    ========================= */
 
     if (
-      !member.roles.cache.has(1507145590528540822)
+      interaction.commandName === "genkey"
     ) {
 
-      return interaction.reply({
-        content:
-          "❌ You do not have access to this command.",
-        ephemeral: true
+      const member = interaction.member;
+
+      const canGenerate =
+
+        member.roles.cache.has(
+          MANAGEMENT_ROLE_ID
+        ) ||
+
+        member.roles.cache.has(
+          ADMIN_ROLE_ID
+        );
+
+      if (!canGenerate) {
+
+        return interaction.reply({
+          content:
+            "❌ You do not have permission to generate keys.",
+          ephemeral: true
+        });
+
+      }
+
+      const targetUser =
+        interaction.options.getUser("user");
+
+      const duration =
+        interaction.options.getString(
+          "duration"
+        );
+
+      const key =
+        "LARP-" +
+        crypto.randomBytes(4)
+          .toString("hex")
+          .toUpperCase() +
+        "-" +
+        crypto.randomBytes(2)
+          .toString("hex")
+          .toUpperCase() +
+        "-" +
+        crypto.randomBytes(2)
+          .toString("hex")
+          .toUpperCase();
+
+      let expires = null;
+      let expiresText = "Never";
+
+      if (duration === "1month") {
+
+        const expireDate = new Date();
+
+        expireDate.setMonth(
+          expireDate.getMonth() + 1
+        );
+
+        expires = expireDate.getTime();
+
+        expiresText =
+          expireDate.toLocaleDateString();
+
+      }
+
+      VALID_KEYS.push({
+
+        userId: targetUser.id,
+
+        key,
+
+        expires,
+
+        duration
+
+      });
+
+      const embed = new EmbedBuilder()
+
+        .setTitle(
+          "🔑 License Delivered"
+        )
+
+        .setDescription(
+          `${targetUser} has received a license key.`
+        )
+
+        .addFields(
+
+          {
+            name: "📦 License Key",
+            value: `\`${key}\``
+          },
+
+          {
+            name: "⏳ Duration",
+            value:
+              duration === "1month"
+                ? "1 Month"
+                : "Lifetime",
+            inline: true
+          },
+
+          {
+            name: "📅 Expires",
+            value: expiresText,
+            inline: true
+          },
+
+          {
+            name: "✅ Status",
+            value: "Active",
+            inline: true
+          }
+
+        )
+
+        .setColor(0x5865F2)
+
+        .setFooter({
+          text:
+            "RoLarp Licensing System"
+        })
+
+        .setTimestamp();
+
+      await interaction.reply({
+        embeds: [embed]
       });
 
     }
 
-    const foundKey = VALID_KEYS.find(
-      k => k.userId === interaction.user.id
-    );
+    /* =========================
+       /LICENSE
+    ========================= */
 
-    if (!foundKey) {
+    if (
+      interaction.commandName === "license"
+    ) {
 
-      return interaction.reply({
-        content:
-          "❌ No license found.",
+      const member = interaction.member;
+
+      if (
+        !member.roles.cache.has(
+          CUSTOMER_ROLE_ID
+        )
+      ) {
+
+        return interaction.reply({
+          content:
+            "❌ You do not have access to this command.",
+          ephemeral: true
+        });
+
+      }
+
+      const foundKey =
+        VALID_KEYS.find(
+          k =>
+            k.userId ===
+            interaction.user.id
+        );
+
+      if (!foundKey) {
+
+        return interaction.reply({
+          content:
+            "❌ No license found.",
+          ephemeral: true
+        });
+
+      }
+
+      let expiresText =
+        foundKey.expires
+          ? new Date(
+              foundKey.expires
+            ).toLocaleDateString()
+          : "Never";
+
+      const embed = new EmbedBuilder()
+
+        .setTitle("🔐 Your License")
+
+        .addFields(
+
+          {
+            name: "📦 License Key",
+            value:
+              `\`${foundKey.key}\``
+          },
+
+          {
+            name: "⏳ Duration",
+            value:
+              foundKey.duration ===
+              "1month"
+                ? "1 Month"
+                : "Lifetime",
+            inline: true
+          },
+
+          {
+            name: "📅 Expires",
+            value: expiresText,
+            inline: true
+          },
+
+          {
+            name: "✅ Status",
+            value:
+              (
+                foundKey.expires &&
+                Date.now() >
+                  foundKey.expires
+              )
+                ? "Expired"
+                : "Active",
+            inline: true
+          }
+
+        )
+
+        .setColor(0x5865F2)
+
+        .setFooter({
+          text:
+            "RoLarp Licensing System"
+        })
+
+        .setTimestamp();
+
+      await interaction.reply({
+
+        embeds: [embed],
+
         ephemeral: true
+
       });
 
     }
-
-    let expiresText =
-      foundKey.expires
-        ? new Date(foundKey.expires)
-            .toLocaleDateString()
-        : "Never";
-
-    const embed = new EmbedBuilder()
-
-      .setTitle("🔐 Your License")
-
-      .addFields(
-
-        {
-          name: "📦 License Key",
-          value: `\`${foundKey.key}\``
-        },
-
-        {
-          name: "⏳ Duration",
-          value:
-            foundKey.duration === "1month"
-              ? "1 Month"
-              : "Lifetime",
-          inline: true
-        },
-
-        {
-          name: "📅 Expires",
-          value: expiresText,
-          inline: true
-        },
-
-        {
-          name: "✅ Status",
-          value:
-            (
-              foundKey.expires &&
-              Date.now() > foundKey.expires
-            )
-              ? "Expired"
-              : "Active",
-          inline: true
-        }
-
-      )
-
-      .setColor(0x5865F2)
-
-      .setFooter({
-        text: "RoLarp Licensing System"
-      })
-
-      .setTimestamp();
-
-    await interaction.reply({
-      embeds: [embed],
-      ephemeral: true
-    });
 
   }
-
-});
+);
 
 bot.login(DISCORD_TOKEN);
 
