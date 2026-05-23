@@ -28,6 +28,9 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
 
+/* CUSTOMER ROLE ID */
+const CUSTOMER_ROLE_ID = "PUT_ROLE_ID_HERE";
+
 /* =========================
    VALID KEYS
 ========================= */
@@ -42,7 +45,8 @@ app.post("/validate", (req, res) => {
 
   const { key } = req.body;
 
-  const foundKey = VALID_KEYS.find(k => k.key === key);
+  const foundKey =
+    VALID_KEYS.find(k => k.key === key);
 
   if (!foundKey) {
 
@@ -53,12 +57,36 @@ app.post("/validate", (req, res) => {
 
   }
 
+  /* =========================
+     CHECK EXPIRATION
+  ========================= */
+
+  if (
+    foundKey.expires &&
+    Date.now() > foundKey.expires
+  ) {
+
+    return res.json({
+      valid: false,
+      error: "License expired"
+    });
+
+  }
+
   res.json({
+
     valid: true,
+
     discord: "Licensed User",
+
     expires: foundKey.expires,
-    sessionToken: crypto.randomUUID(),
-    sessionExp: Date.now() + (15 * 60 * 1000)
+
+    sessionToken:
+      crypto.randomUUID(),
+
+    sessionExp:
+      Date.now() + (15 * 60 * 1000)
+
   });
 
 });
@@ -83,10 +111,21 @@ bot.once("ready", () => {
 
 const commands = [
 
+  /* =========================
+     /GENKEY
+  ========================= */
+
   new SlashCommandBuilder()
 
     .setName("genkey")
     .setDescription("Generate a license key")
+
+    .addUserOption(option =>
+      option
+        .setName("user")
+        .setDescription("Customer")
+        .setRequired(true)
+    )
 
     .addStringOption(option =>
       option
@@ -107,13 +146,26 @@ const commands = [
 
     .setDefaultMemberPermissions(
       PermissionFlagsBits.Administrator
-    )
+    ),
+
+  /* =========================
+     /LICENSE
+  ========================= */
+
+  new SlashCommandBuilder()
+
+    .setName("license")
+    .setDescription("View your license")
 
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({
   version: "10"
 }).setToken(DISCORD_TOKEN);
+
+/* =========================
+   REGISTER COMMANDS
+========================= */
 
 (async () => {
 
@@ -155,6 +207,9 @@ bot.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "genkey") {
 
+    const targetUser =
+      interaction.options.getUser("user");
+
     const duration =
       interaction.options.getString("duration");
 
@@ -191,8 +246,10 @@ bot.on("interactionCreate", async interaction => {
     }
 
     VALID_KEYS.push({
+      userId: targetUser.id,
       key,
-      expires
+      expires,
+      duration
     });
 
     const embed = new EmbedBuilder()
@@ -200,7 +257,7 @@ bot.on("interactionCreate", async interaction => {
       .setTitle("🔑 License Delivered")
 
       .setDescription(
-        "A new extension key has been generated successfully."
+        `${targetUser} has received a license key.`
       )
 
       .addFields(
@@ -243,6 +300,101 @@ bot.on("interactionCreate", async interaction => {
 
     await interaction.reply({
       embeds: [embed]
+    });
+
+  }
+
+  /* =========================
+     /LICENSE
+  ========================= */
+
+  if (interaction.commandName === "license") {
+
+    const member = interaction.member;
+
+    if (
+      !member.roles.cache.has(1507145590528540822)
+    ) {
+
+      return interaction.reply({
+        content:
+          "❌ You do not have access to this command.",
+        ephemeral: true
+      });
+
+    }
+
+    const foundKey = VALID_KEYS.find(
+      k => k.userId === interaction.user.id
+    );
+
+    if (!foundKey) {
+
+      return interaction.reply({
+        content:
+          "❌ No license found.",
+        ephemeral: true
+      });
+
+    }
+
+    let expiresText =
+      foundKey.expires
+        ? new Date(foundKey.expires)
+            .toLocaleDateString()
+        : "Never";
+
+    const embed = new EmbedBuilder()
+
+      .setTitle("🔐 Your License")
+
+      .addFields(
+
+        {
+          name: "📦 License Key",
+          value: `\`${foundKey.key}\``
+        },
+
+        {
+          name: "⏳ Duration",
+          value:
+            foundKey.duration === "1month"
+              ? "1 Month"
+              : "Lifetime",
+          inline: true
+        },
+
+        {
+          name: "📅 Expires",
+          value: expiresText,
+          inline: true
+        },
+
+        {
+          name: "✅ Status",
+          value:
+            (
+              foundKey.expires &&
+              Date.now() > foundKey.expires
+            )
+              ? "Expired"
+              : "Active",
+          inline: true
+        }
+
+      )
+
+      .setColor(0x5865F2)
+
+      .setFooter({
+        text: "RoLarp Licensing System"
+      })
+
+      .setTimestamp();
+
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true
     });
 
   }
