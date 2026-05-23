@@ -148,6 +148,7 @@ const commands = [
         .setDescription("License duration")
         .setRequired(true)
         .addChoices(
+          { name: "1 Day", value: "1day" },
           { name: "7 Days", value: "7days" },
           { name: "1 Month", value: "1month" },
           { name: "Lifetime", value: "lifetime" }
@@ -234,6 +235,17 @@ bot.on("interactionCreate", async interaction => {
 
     let expires = null;
     let expiresText = "Never";
+
+    /* 1 DAY */
+
+    if (duration === "1day") {
+
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+
+      expires = d.getTime();
+      expiresText = d.toLocaleDateString();
+    }
 
     /* 7 DAYS */
 
