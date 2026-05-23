@@ -18,20 +18,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const PORT = process.env.PORT || 3000;
+
 /* =========================
-   CONFIG
+   MONGODB
 ========================= */
 
-const {
-  DISCORD_TOKEN,
-  MONGO_URI,
-  CLIENT_ID,
-  GUILD_ID,
-  PORT
-} = process.env;
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("🟢 MongoDB connected"))
+  .catch(err => console.error("Mongo error:", err));
+
+const keySchema = new mongoose.Schema({
+  userId: String,
+  key: String,
+  expires: Number,
+  duration: String
+});
+
+const Key = mongoose.model("Key", keySchema);
 
 /* =========================
-   ROLES
+   DISCORD CONFIG
+========================= */
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = "1507541333219348570";
+const GUILD_ID = "1507127260547645610";
+
+/* =========================
+   ROLE IDS
 ========================= */
 
 const CUSTOMER_ROLE_ID = "1507145590528540822";
@@ -39,69 +54,35 @@ const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
 
 /* =========================
-   DATABASE
-========================= */
-
-mongoose.connect(MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.log(err));
-
-const keySchema = new mongoose.Schema({
-  userId: String,
-  key: String,
-  duration: String,
-  expires: Number,
-
-  // 🔐 HWID LOCK
-  hwid: { type: String, default: null }
-});
-
-const Key = mongoose.model("Key", keySchema);
-
-/* =========================
-   EXPRESS VALIDATION
+   EXPRESS API (/validate)
 ========================= */
 
 app.post("/validate", async (req, res) => {
-  const { key, hwid } = req.body;
+  try {
+    const { key } = req.body;
 
-  if (!key || !hwid) {
+    const foundKey = await Key.findOne({ key });
+
+    if (!foundKey) {
+      return res.json({ valid: false, error: "Invalid key" });
+    }
+
+    if (foundKey.expires && Date.now() > foundKey.expires) {
+      return res.json({ valid: false, error: "License expired" });
+    }
+
     return res.json({
-      valid: false,
-      error: "Missing key or HWID"
+      valid: true,
+      userId: foundKey.userId,
+      expires: foundKey.expires,
+      sessionToken: crypto.randomUUID(),
+      sessionExp: Date.now() + 15 * 60 * 1000
     });
+
+  } catch (err) {
+    console.error(err);
+    return res.json({ valid: false, error: "Server error" });
   }
-
-  const data = await Key.findOne({ key });
-
-  if (!data) {
-    return res.json({ valid: false, error: "Invalid key" });
-  }
-
-  // ⛔ expired check
-  if (data.expires && Date.now() > data.expires) {
-    return res.json({ valid: false, error: "License expired" });
-  }
-
-  // 🔐 FIRST TIME LOCK
-  if (!data.hwid) {
-    data.hwid = hwid;
-    await data.save();
-  }
-
-  // ⛔ HWID CHECK
-  if (data.hwid !== hwid) {
-    return res.json({
-      valid: false,
-      error: "HWID mismatch (different device)"
-    });
-  }
-
-  return res.json({
-    valid: true,
-    sessionToken: crypto.randomUUID(),
-    expires: data.expires || null
-  });
 });
 
 /* =========================
@@ -109,10 +90,11 @@ app.post("/validate", async (req, res) => {
 ========================= */
 
 const bot = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
-  ]
+  intents: [GatewayIntentBits.Guilds]
+});
+
+bot.once("ready", () => {
+  console.log(`✅ Logged in as ${bot.user.tag}`);
 });
 
 /* =========================
@@ -122,12 +104,13 @@ const bot = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("genkey")
-    .setDescription("Generate license key")
-    .addUserOption(o =>
-      o.setName("user").setRequired(true).setDescription("User")
+    .setDescription("Generate a license key")
+    .addUserOption(opt =>
+      opt.setName("user").setDescription("User").setRequired(true)
     )
-    .addStringOption(o =>
-      o.setName("duration")
+    .addStringOption(opt =>
+      opt.setName("duration")
+        .setDescription("Duration")
         .setRequired(true)
         .addChoices(
           { name: "1 Month", value: "1month" },
@@ -147,118 +130,145 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 ========================= */
 
 (async () => {
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
+  try {
+    console.log("🔄 Registering slash commands...");
 
-  console.log("✅ Slash commands registered");
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+
+    console.log("✅ Slash commands registered.");
+  } catch (err) {
+    console.error(err);
+  }
 })();
 
 /* =========================
-   BOT READY
-========================= */
-
-bot.once("ready", () => {
-  console.log(`✅ Logged in as ${bot.user.tag}`);
-});
-
-/* =========================
-   COMMAND HANDLER
+   INTERACTIONS
 ========================= */
 
 bot.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  /* =========================
-     /GENKEY
-  ========================= */
+  try {
 
-  if (interaction.commandName === "genkey") {
-    await interaction.deferReply();
+    /* =========================
+       /GENKEY
+    ========================= */
+    if (interaction.commandName === "genkey") {
 
-    const member = interaction.member;
+      await interaction.deferReply();
 
-    if (
-      !member.roles.cache.has(MANAGEMENT_ROLE_ID) &&
-      !member.roles.cache.has(ADMIN_ROLE_ID)
-    ) {
-      return interaction.editReply("❌ No permission.");
+      const member = interaction.member;
+
+      const canGenerate =
+        member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
+        member.roles.cache.has(ADMIN_ROLE_ID);
+
+      if (!canGenerate) {
+        return interaction.editReply("❌ No permission.");
+      }
+
+      const targetUser = interaction.options.getUser("user");
+      const duration = interaction.options.getString("duration");
+
+      const guildMember = await interaction.guild.members.fetch(targetUser.id);
+
+      const key =
+        "LARP-" +
+        crypto.randomBytes(4).toString("hex").toUpperCase() +
+        "-" +
+        crypto.randomBytes(2).toString("hex").toUpperCase() +
+        "-" +
+        crypto.randomBytes(2).toString("hex").toUpperCase();
+
+      let expires = null;
+      let expiresText = "Never";
+
+      if (duration === "1month") {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        expires = d.getTime();
+        expiresText = d.toLocaleDateString();
+      }
+
+      await Key.create({
+        userId: targetUser.id,
+        key,
+        expires,
+        duration
+      });
+
+      // GIVE ROLE
+      if (!guildMember.roles.cache.has(CUSTOMER_ROLE_ID)) {
+        await guildMember.roles.add(CUSTOMER_ROLE_ID);
+      }
+
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🔑 Key Generated")
+            .setDescription(`Key sent to ${targetUser}`)
+            .addFields(
+              { name: "Key", value: `\`${key}\`` },
+              { name: "Duration", value: duration },
+              { name: "Expires", value: expiresText }
+            )
+            .setColor(0x5865F2)
+        ]
+      });
     }
 
-    const user = interaction.options.getUser("user");
-    const duration = interaction.options.getString("duration");
+    /* =========================
+       /LICENSE
+    ========================= */
+    if (interaction.commandName === "license") {
 
-    const key =
-      "LARP-" +
-      crypto.randomBytes(4).toString("hex").toUpperCase();
+      await interaction.deferReply({ ephemeral: true });
 
-    let expires = null;
+      const foundKey = await Key.findOne({
+        userId: interaction.user.id
+      });
 
-    if (duration === "1month") {
-      const d = new Date();
-      d.setMonth(d.getMonth() + 1);
-      expires = d.getTime();
+      if (!foundKey) {
+        return interaction.editReply("❌ No license found.");
+      }
+
+      const expired =
+        foundKey.expires && Date.now() > foundKey.expires;
+
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle("🔐 Your License")
+            .addFields(
+              { name: "Key", value: `\`${foundKey.key}\`` },
+              { name: "Duration", value: foundKey.duration },
+              { name: "Status", value: expired ? "Expired" : "Active" }
+            )
+            .setColor(0x5865F2)
+        ]
+      });
     }
 
-    await Key.create({
-      userId: user.id,
-      key,
-      duration,
-      expires
-    });
+  } catch (err) {
+    console.error("COMMAND ERROR:", err);
 
-    // 🔐 GIVE ROLE
-    const guildMember = await interaction.guild.members.fetch(user.id);
-    guildMember.roles.add(CUSTOMER_ROLE_ID);
-
-    const embed = new EmbedBuilder()
-      .setTitle("🔑 Key Generated")
-      .setDescription(`Sent to ${user}`)
-      .addFields(
-        { name: "Key", value: `\`${key}\`` },
-        { name: "Duration", value: duration },
-        { name: "Expires", value: expires ? new Date(expires).toLocaleDateString() : "Never" }
-      )
-      .setColor(0x00ff99);
-
-    return interaction.editReply({ embeds: [embed] });
-  }
-
-  /* =========================
-     /LICENSE
-  ========================= */
-
-  if (interaction.commandName === "license") {
-    await interaction.deferReply({ ephemeral: true });
-
-    const data = await Key.findOne({ userId: interaction.user.id });
-
-    if (!data) {
-      return interaction.editReply("❌ No license found.");
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply("❌ Error occurred.");
+    } else {
+      await interaction.reply({ content: "❌ Error occurred.", ephemeral: true });
     }
-
-    const expired =
-      data.expires && Date.now() > data.expires;
-
-    const embed = new EmbedBuilder()
-      .setTitle("🔐 Your License")
-      .addFields(
-        { name: "Key", value: `\`${data.key}\`` },
-        { name: "Status", value: expired ? "Expired" : "Active" }
-      )
-      .setColor(0x5865f2);
-
-    return interaction.editReply({ embeds: [embed] });
   }
 });
 
 /* =========================
-   LOGIN + SERVER
+   START SERVER
 ========================= */
 
-bot.login(DISCORD_TOKEN);
-
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
+
+bot.login(DISCORD_TOKEN);
