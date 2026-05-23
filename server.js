@@ -51,6 +51,7 @@ const KEYS_FILE = "./keys.json";
 
 /* load keys */
 function loadKeys() {
+
   try {
 
     if (!fs.existsSync(KEYS_FILE)) {
@@ -71,6 +72,7 @@ function loadKeys() {
 
 /* save keys */
 function saveKeys(keys) {
+
   try {
 
     fs.writeFileSync(
@@ -99,12 +101,15 @@ app.post("/validate", (req, res) => {
     });
   }
 
-  const normalized = key.trim().toUpperCase();
+  const normalized =
+    key.trim().toUpperCase();
 
   const keys = loadKeys();
 
   const foundKey = keys.find(
-    k => k.key.toUpperCase() === normalized
+    k =>
+      k.key.toUpperCase() ===
+      normalized
   );
 
   if (!foundKey) {
@@ -136,7 +141,7 @@ app.post("/validate", (req, res) => {
     });
   }
 
-  /* FIRST LOGIN LOCK */
+  /* FIRST DEVICE LOCK */
 
   if (!foundKey.hwid && hwid) {
 
@@ -147,10 +152,15 @@ app.post("/validate", (req, res) => {
 
   return res.json({
     valid: true,
-    discord: foundKey.userId || "Licensed User",
+    discord:
+      foundKey.userId ||
+      "Licensed User",
     expires: foundKey.expires,
-    sessionToken: crypto.randomUUID(),
-    sessionExp: Date.now() + (15 * 60 * 1000)
+    sessionToken:
+      crypto.randomUUID(),
+    sessionExp:
+      Date.now() +
+      (15 * 60 * 1000)
   });
 });
 
@@ -163,9 +173,11 @@ const bot = new Client({
 });
 
 bot.once("ready", () => {
+
   console.log(
     `✅ Bot logged in as ${bot.user.tag}`
   );
+
 });
 
 /* =========================
@@ -176,17 +188,23 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("genkey")
-    .setDescription("Generate a license key")
+    .setDescription(
+      "Generate a license key"
+    )
     .addUserOption(option =>
       option
         .setName("user")
-        .setDescription("Customer")
+        .setDescription(
+          "Customer"
+        )
         .setRequired(true)
     )
     .addStringOption(option =>
       option
         .setName("duration")
-        .setDescription("License duration")
+        .setDescription(
+          "License duration"
+        )
         .setRequired(true)
         .addChoices(
           {
@@ -202,12 +220,14 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("license")
-    .setDescription("View your license"),
+    .setDescription(
+      "View your license"
+    ),
 
   new SlashCommandBuilder()
     .setName("resethwid")
     .setDescription(
-      "Reset HWID for your license"
+      "Reset your HWID"
     )
 
 ].map(cmd => cmd.toJSON());
@@ -260,10 +280,12 @@ bot.on(
     ========================= */
 
     if (
-      interaction.commandName === "genkey"
+      interaction.commandName ===
+      "genkey"
     ) {
 
-      const member = interaction.member;
+      const member =
+        interaction.member;
 
       const canGenerate =
         member.roles.cache.has(
@@ -274,6 +296,7 @@ bot.on(
         );
 
       if (!canGenerate) {
+
         return interaction.reply({
           content:
             "❌ You do not have permission to generate keys.",
@@ -337,21 +360,26 @@ bot.on(
 
       saveKeys(keys);
 
+      /* DM EMBED */
+
       const dmEmbed =
         new EmbedBuilder()
           .setTitle(
             "🔐 Your License Key"
           )
           .setDescription(
-            "Thank you for purchasing RoLarp.\n\nKeep your key private."
+            "Thank you for purchasing RoLarp.\n\nKeep your license private."
           )
           .addFields(
             {
-              name: "🔑 License Key",
-              value: `\`${key}\``
+              name:
+                "🔑 License Key",
+              value:
+                `\`${key}\``
             },
             {
-              name: "⏳ Duration",
+              name:
+                "⏳ Duration",
               value:
                 duration ===
                 "1month"
@@ -360,14 +388,17 @@ bot.on(
               inline: true
             },
             {
-              name: "📅 Expires",
-              value: expiresText,
+              name:
+                "📅 Expires",
+              value:
+                expiresText,
               inline: true
             },
             {
               name:
                 "📥 Extension Download",
-              value: DOWNLOAD_LINK
+              value:
+                DOWNLOAD_LINK
             },
             {
               name:
@@ -383,26 +414,66 @@ bot.on(
           })
           .setTimestamp();
 
+      /* TICKET EMBED */
+
+      const ticketEmbed =
+        new EmbedBuilder()
+          .setTitle(
+            "✅ License Generated"
+          )
+          .setDescription(
+            `${targetUser} has been issued a license key.`
+          )
+          .addFields(
+            {
+              name:
+                "🔑 License Key",
+              value:
+                `\`${key}\``
+            },
+            {
+              name:
+                "⏳ Duration",
+              value:
+                duration ===
+                "1month"
+                  ? "1 Month"
+                  : "Lifetime",
+              inline: true
+            },
+            {
+              name:
+                "📅 Expires",
+              value:
+                expiresText,
+              inline: true
+            },
+            {
+              name:
+                "📥 Download",
+              value:
+                DOWNLOAD_LINK
+            }
+          )
+          .setColor(0x57F287)
+          .setFooter({
+            text:
+              "RoLarp Licensing System"
+          })
+          .setTimestamp();
+
       try {
+
+        /* SEND DM */
 
         await targetUser.send({
           embeds: [dmEmbed]
         });
 
-        const successEmbed =
-          new EmbedBuilder()
-            .setTitle(
-              "✅ License Generated"
-            )
-            .setDescription(
-              `${targetUser} has received their license key in DMs.`
-            )
-            .setColor(0x57F287)
-            .setTimestamp();
+        /* SEND IN TICKET */
 
         return interaction.reply({
-          embeds: [successEmbed],
-          ephemeral: true
+          embeds: [ticketEmbed]
         });
 
       } catch (err) {
@@ -410,7 +481,7 @@ bot.on(
         return interaction.reply({
           content:
             `❌ Could not DM ${targetUser}.\n` +
-            `They may have DMs disabled.`,
+            `Their DMs may be disabled.`,
           ephemeral: true
         });
       }
@@ -425,13 +496,15 @@ bot.on(
       "license"
     ) {
 
-      const member = interaction.member;
+      const member =
+        interaction.member;
 
       if (
         !member.roles.cache.has(
           CUSTOMER_ROLE_ID
         )
       ) {
+
         return interaction.reply({
           content:
             "❌ You do not have access to this command.",
@@ -448,6 +521,7 @@ bot.on(
       );
 
       if (!foundKey) {
+
         return interaction.reply({
           content:
             "❌ No license found.",
@@ -492,7 +566,8 @@ bot.on(
             {
               name:
                 "📅 Expires",
-              value: expiresText,
+              value:
+                expiresText,
               inline: true
             },
             {
@@ -536,6 +611,7 @@ bot.on(
       );
 
       if (!userKey) {
+
         return interaction.reply({
           content:
             "❌ You do not have a license key.",
