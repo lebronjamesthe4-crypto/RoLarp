@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const fs = require("fs");
 
 const {
   Client,
@@ -35,18 +36,45 @@ const GUILD_ID = "1507127260547645610";
 const CUSTOMER_ROLE_ID =
   "1507145590528540822";
 
-/* ROLES THAT CAN GEN KEYS */
+/* MANAGEMENT ROLE */
 const MANAGEMENT_ROLE_ID =
   "1507127911897890856";
 
+/* ADMIN ROLE */
 const ADMIN_ROLE_ID =
   "1507127797607432283";
 
 /* =========================
-   VALID KEYS
+   KEY STORAGE
 ========================= */
 
-const VALID_KEYS = [];
+const KEYS_FILE = "./keys.json";
+
+function loadKeys() {
+
+  if (!fs.existsSync(KEYS_FILE)) {
+
+    fs.writeFileSync(
+      KEYS_FILE,
+      "[]"
+    );
+
+  }
+
+  return JSON.parse(
+    fs.readFileSync(KEYS_FILE)
+  );
+
+}
+
+function saveKeys(keys) {
+
+  fs.writeFileSync(
+    KEYS_FILE,
+    JSON.stringify(keys, null, 2)
+  );
+
+}
 
 /* =========================
    EXPRESS API
@@ -57,7 +85,9 @@ app.post("/validate", (req, res) => {
   const { key } = req.body;
 
   const foundKey =
-    VALID_KEYS.find(k => k.key === key);
+    loadKeys().find(
+      k => k.key === key
+    );
 
   if (!foundKey) {
 
@@ -287,7 +317,9 @@ bot.on(
 
       }
 
-      VALID_KEYS.push({
+      const keys = loadKeys();
+
+      keys.push({
 
         userId: targetUser.id,
 
@@ -298,6 +330,8 @@ bot.on(
         duration
 
       });
+
+      saveKeys(keys);
 
       const embed = new EmbedBuilder()
 
@@ -379,7 +413,7 @@ bot.on(
       }
 
       const foundKey =
-        VALID_KEYS.find(
+        loadKeys().find(
           k =>
             k.userId ===
             interaction.user.id
