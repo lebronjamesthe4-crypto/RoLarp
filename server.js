@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
-
 const mongoose = require("mongoose");
 
 const {
@@ -21,16 +20,12 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   MONGO CONNECTION
+   MONGO DB
 ========================= */
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
-  .catch(err => console.error("MongoDB error:", err));
-
-/* =========================
-   DATABASE SCHEMA
-========================= */
+  .catch(err => console.error("Mongo error:", err));
 
 const KeySchema = new mongoose.Schema({
   userId: String,
@@ -67,7 +62,7 @@ const SETUP_LINK =
   "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
 /* =========================
-   EXPRESS VALIDATION API
+   EXPRESS VALIDATION
 ========================= */
 
 app.post("/validate", async (req, res) => {
@@ -149,7 +144,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("resethwid")
-    .setDescription("Reset HWID")
+    .setDescription("Reset HWID"),
+
+  new SlashCommandBuilder()
+    .setName("keys")
+    .setDescription("View all keys (admin only)")
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
@@ -159,6 +158,7 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
     Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
     { body: commands }
   );
+  console.log("✅ Commands loaded");
 })();
 
 /* =========================
@@ -192,9 +192,7 @@ bot.on("interactionCreate", async interaction => {
 
     const key =
       "LARP-" +
-      crypto.randomBytes(4).toString("hex").toUpperCase() +
-      "-" +
-      crypto.randomBytes(2).toString("hex").toUpperCase();
+      crypto.randomBytes(4).toString("hex").toUpperCase();
 
     let expires = null;
     let expiresText = "Never";
@@ -215,31 +213,25 @@ bot.on("interactionCreate", async interaction => {
       lastReset: 0
     });
 
-    /* DM */
-
     const dmEmbed = new EmbedBuilder()
-      .setTitle("🔐 License Key")
+      .setTitle("🔐 Your License Key")
       .setColor(0x5865F2)
       .addFields(
         { name: "Key", value: `\`${key}\`` },
         { name: "Expires", value: expiresText },
         { name: "Download", value: DOWNLOAD_LINK },
-        { name: "Setup Guide", value: SETUP_LINK }
+        { name: "Setup", value: SETUP_LINK }
       );
-
-    /* TICKET */
 
     const ticketEmbed = new EmbedBuilder()
       .setTitle("✅ Key Generated")
-      .setDescription(`${targetUser}`)
       .addFields(
         { name: "Key", value: `\`${key}\`` },
-        { name: "Download", value: DOWNLOAD_LINK }
+        { name: "User", value: `${targetUser}` }
       );
 
     try {
       await targetUser.send({ embeds: [dmEmbed] });
-
       return interaction.reply({ embeds: [ticketEmbed] });
 
     } catch {
@@ -256,13 +248,13 @@ bot.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "license") {
 
-    const foundKey = await LicenseKey.findOne({
+    const key = await LicenseKey.findOne({
       userId: interaction.user.id
     });
 
-    if (!foundKey) {
+    if (!key) {
       return interaction.reply({
-        content: "No license",
+        content: "No license found",
         ephemeral: true
       });
     }
@@ -270,9 +262,9 @@ bot.on("interactionCreate", async interaction => {
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setTitle("License")
+          .setTitle("Your License")
           .addFields(
-            { name: "Key", value: `\`${foundKey.key}\`` },
+            { name: "Key", value: `\`${key.key}\`` },
             { name: "Status", value: "Active" }
           )
       ],
@@ -286,11 +278,11 @@ bot.on("interactionCreate", async interaction => {
 
   if (interaction.commandName === "resethwid") {
 
-    const foundKey = await LicenseKey.findOne({
+    const key = await LicenseKey.findOne({
       userId: interaction.user.id
     });
 
-    if (!foundKey) {
+    if (!key) {
       return interaction.reply({
         content: "No key",
         ephemeral: true
@@ -298,21 +290,50 @@ bot.on("interactionCreate", async interaction => {
     }
 
     const cooldown = 24 * 60 * 60 * 1000;
-    const now = Date.now();
 
-    if (now - (foundKey.lastReset || 0) < cooldown) {
+    if (Date.now() - (key.lastReset || 0) < cooldown) {
       return interaction.reply({
         content: "Cooldown active",
         ephemeral: true
       });
     }
 
-    foundKey.hwid = null;
-    foundKey.lastReset = now;
-    await foundKey.save();
+    key.hwid = null;
+    key.lastReset = Date.now();
+    await key.save();
 
     return interaction.reply({
-      content: "HWID reset",
+      content: "HWID reset done",
+      ephemeral: true
+    });
+  }
+
+  /* =========================
+     KEYS (ADMIN)
+  ========================= */
+
+  if (interaction.commandName === "keys") {
+
+    const member = interaction.member;
+
+    if (
+      !member.roles.cache.has(ADMIN_ROLE_ID) &&
+      !member.roles.cache.has(MANAGEMENT_ROLE_ID)
+    ) {
+      return interaction.reply({
+        content: "❌ No permission",
+        ephemeral: true
+      });
+    }
+
+    const keys = await LicenseKey.find().limit(20);
+
+    const list = keys.map(k =>
+      `🔑 ${k.key} | <@${k.userId}>`
+    ).join("\n");
+
+    return interaction.reply({
+      content: list || "No keys found",
       ephemeral: true
     });
   }
