@@ -2,23 +2,44 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 
+const {
+  Client,
+  GatewayIntentBits,
+  SlashCommandBuilder,
+  REST,
+  Routes,
+  PermissionFlagsBits
+} = require("discord.js");
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-const VALID_KEYS = [
-  "LARP-AAAA1111-BBBB-2222",
-  "LARP-REALKEY-CCCC-3333",
-  "LARP-PREMIUM-DDDD-4444"
-];
+const PORT = process.env.PORT || 3000;
+
+/* =========================
+   DISCORD CONFIG
+========================= */
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+
+const CLIENT_ID = "1507541333219348570";
+const GUILD_ID = "1507127260547645610";
+
+/* =========================
+   VALID KEYS
+========================= */
+
+const VALID_KEYS = [];
+
+/* =========================
+   EXPRESS API
+========================= */
 
 app.post("/validate", (req, res) => {
 
-  const { key, hwid } = req.body;
-
-  console.log("Key Attempt:", key);
-  console.log("HWID:", hwid);
+  const { key } = req.body;
 
   if (!VALID_KEYS.includes(key)) {
     return res.json({
@@ -27,7 +48,7 @@ app.post("/validate", (req, res) => {
     });
   }
 
-  return res.json({
+  res.json({
     valid: true,
     discord: "Licensed User",
     expires: null,
@@ -37,6 +58,89 @@ app.post("/validate", (req, res) => {
 
 });
 
-app.listen(3000, () => {
-  console.log("Key server running on port 3000");
+/* =========================
+   DISCORD BOT
+========================= */
+
+const bot = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
+
+bot.once("ready", () => {
+  console.log(`Bot logged in as ${bot.user.tag}`);
+});
+
+/* =========================
+   SLASH COMMANDS
+========================= */
+
+const commands = [
+  new SlashCommandBuilder()
+    .setName("genkey")
+    .setDescription("Generate a license key")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+].map(cmd => cmd.toJSON());
+
+const rest = new REST({ version: "10" })
+  .setToken(DISCORD_TOKEN);
+
+(async () => {
+
+  try {
+
+    console.log("Registering slash commands...");
+
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+
+    console.log("Slash commands registered.");
+
+  } catch (err) {
+    console.error(err);
+  }
+
+})();
+
+/* =========================
+   COMMAND HANDLER
+========================= */
+
+bot.on("interactionCreate", async interaction => {
+
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "genkey") {
+
+    const key =
+      "LARP-" +
+      crypto.randomBytes(4).toString("hex").toUpperCase() +
+      "-" +
+      crypto.randomBytes(2).toString("hex").toUpperCase() +
+      "-" +
+      crypto.randomBytes(2).toString("hex").toUpperCase();
+
+    VALID_KEYS.push(key);
+
+    await interaction.reply({
+      content:
+`✅ Generated Key:
+
+\`${key}\``,
+      ephemeral: true
+    });
+
+  }
+
+});
+
+bot.login(DISCORD_TOKEN);
+
+/* =========================
+   START SERVER
+========================= */
+
+app.listen(PORT, () => {
+  console.log(`Key server running on port ${PORT}`);
 });
