@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 3000;
    DISCORD CONFIG
 ========================= */
 
-const DISCORD_TOKEN = process.env.MTUwNzU0MTMzMzIxOTM0ODU3MA.GsaNtj.sXfz-VVJezwQQAdrrrufRLcGeUtQ6yzTK8izRU;
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
