@@ -68,7 +68,7 @@ const bot = new Client({
 });
 
 bot.once("ready", () => {
-  console.log(`Bot logged in as ${bot.user.tag}`);
+  console.log(`✅ Bot logged in as ${bot.user.tag}`);
 });
 
 /* =========================
@@ -89,14 +89,14 @@ const rest = new REST({ version: "10" })
 
   try {
 
-    console.log("Registering slash commands...");
+    console.log("🔄 Registering slash commands...");
 
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
 
-    console.log("Slash commands registered.");
+    console.log("✅ Slash commands registered.");
 
   } catch (err) {
     console.error(err);
@@ -112,6 +112,10 @@ bot.on("interactionCreate", async interaction => {
 
   if (!interaction.isChatInputCommand()) return;
 
+  /* =========================
+     /GENKEY
+  ========================= */
+
   if (interaction.commandName === "genkey") {
 
     const key =
@@ -124,24 +128,24 @@ bot.on("interactionCreate", async interaction => {
 
     VALID_KEYS.push(key);
 
-   const embed = new EmbedBuilder()
-  .setTitle("🔑 License Key Generated")
-  .setDescription(
-`Your new extension key has been generated.
+    const embed = new EmbedBuilder()
+      .setTitle("🔑 License Key Generated")
+      .setDescription(
+`Your new extension key has been generated successfully.
 
 ## Key
 \`${key}\``
-  )
-  .setColor(0x5865F2)
-  .setFooter({
-    text: "RoLarp Licensing System"
-  })
-  .setTimestamp();
+      )
+      .setColor(0x5865F2)
+      .setFooter({
+        text: "RoLarp Licensing System"
+      })
+      .setTimestamp();
 
-await interaction.reply({
-  embeds: [embed],
-  ephemeral: true
-});
+    await interaction.reply({
+      embeds: [embed],
+      ephemeral: true
+    });
 
   }
 
@@ -154,5 +158,5 @@ bot.login(DISCORD_TOKEN);
 ========================= */
 
 app.listen(PORT, () => {
-  console.log(`Key server running on port ${PORT}`);
+  console.log(`🚀 Key server running on port ${PORT}`);
 });
