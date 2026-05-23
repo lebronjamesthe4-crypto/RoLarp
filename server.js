@@ -148,6 +148,7 @@ const commands = [
         .setDescription("License duration")
         .setRequired(true)
         .addChoices(
+          { name: "7 Days", value: "7days" },
           { name: "1 Month", value: "1month" },
           { name: "Lifetime", value: "lifetime" }
         )
@@ -167,7 +168,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("revokekey")
-    .setDescription("Revoke a user's license key")
+    .setDescription("Revoke a user's key")
     .addUserOption(option =>
       option.setName("user")
         .setDescription("User")
@@ -179,20 +180,22 @@ const commands = [
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 
 (async () => {
+
   try {
 
-    console.log("🔄 Registering slash commands...");
+    console.log("🔄 Registering commands...");
 
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
 
-    console.log("✅ Slash commands registered");
+    console.log("✅ Commands registered");
 
   } catch (err) {
     console.error(err);
   }
+
 })();
 
 /* =========================
@@ -232,7 +235,21 @@ bot.on("interactionCreate", async interaction => {
     let expires = null;
     let expiresText = "Never";
 
+    /* 7 DAYS */
+
+    if (duration === "7days") {
+
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+
+      expires = d.getTime();
+      expiresText = d.toLocaleDateString();
+    }
+
+    /* 1 MONTH */
+
     if (duration === "1month") {
+
       const d = new Date();
       d.setMonth(d.getMonth() + 1);
 
@@ -286,16 +303,24 @@ bot.on("interactionCreate", async interaction => {
         {
           name: "🔑 License Key",
           value: `\`${key}\``
+        },
+        {
+          name: "📅 Expires",
+          value: expiresText
         }
       )
       .setTimestamp();
 
     try {
+
       await targetUser.send({
         embeds: [dmEmbed]
       });
+
     } catch {
+
       console.log("Could not DM user");
+
     }
 
     return interaction.reply({
@@ -436,6 +461,7 @@ bot.on("interactionCreate", async interaction => {
 📅 ${expires}
 🖥️ ${k.hwid ? "Bound" : "Unbound"}
 `;
+
     }).join("\n");
 
     return interaction.reply({
@@ -483,6 +509,7 @@ bot.on("interactionCreate", async interaction => {
     });
 
     try {
+
       await targetUser.send({
         embeds: [
           new EmbedBuilder()
@@ -497,15 +524,18 @@ bot.on("interactionCreate", async interaction => {
             .setColor(0xED4245)
         ]
       });
+
     } catch {
+
       console.log("Could not DM revoked user");
+
     }
 
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("✅ License Revoked")
-          .setDescription(`${targetUser}'s key was removed.`)
+          .setDescription(`${targetUser}'s license was revoked.`)
           .addFields({
             name: "🔑 Revoked Key",
             value: `\`${revokedKey}\``
