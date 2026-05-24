@@ -24,7 +24,7 @@ const PORT = process.env.PORT || 3000;
 ========================= */
 
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
+  .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.error("MongoDB error:", err));
 
 const KeySchema = new mongoose.Schema({
@@ -126,7 +126,7 @@ const bot = new Client({
 });
 
 bot.once("ready", () => {
-  console.log(`Logged in as ${bot.user.tag}`);
+  console.log(`✅ Logged in as ${bot.user.tag}`);
 });
 
 /* =========================
@@ -184,7 +184,7 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 
   try {
 
-    console.log("Registering commands...");
+    console.log("🔄 Registering commands...");
 
     await rest.put(
       Routes.applicationGuildCommands(
@@ -194,7 +194,7 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
       { body: commands }
     );
 
-    console.log("Commands registered");
+    console.log("✅ Commands registered");
 
   } catch (err) {
     console.error(err);
@@ -224,7 +224,7 @@ bot.on("interactionCreate", async interaction => {
 
     if (!allowed) {
       return interaction.reply({
-        content: "No permission",
+        content: "❌ No permission",
         ephemeral: true
       });
     }
@@ -306,23 +306,23 @@ bot.on("interactionCreate", async interaction => {
     ========================= */
 
     const dmEmbed = new EmbedBuilder()
-      .setTitle("Your License")
-      .setColor(0x5865F2)
+      .setTitle("🔐 Your License")
+      .setColor(0x1E3A8A)
       .addFields(
         {
-          name: "License Key",
+          name: "🔑 License Key",
           value: `\`${key}\``
         },
         {
-          name: "Expires",
+          name: "📅 Expires",
           value: expiresText
         },
         {
-          name: "Download",
+          name: "⬇️ Download",
           value: DOWNLOAD_LINK
         },
         {
-          name: "Setup Guide",
+          name: "🛠️ Setup Guide",
           value: SETUP_LINK
         }
       )
@@ -337,19 +337,19 @@ bot.on("interactionCreate", async interaction => {
 
     const channelEmbed =
       new EmbedBuilder()
-        .setTitle("License Generated")
-        .setColor(0x57F287)
+        .setTitle("✅ License Generated")
+        .setColor(0x1E3A8A)
         .addFields(
           {
-            name: "User",
+            name: "👤 User",
             value: `${targetUser}`
           },
           {
-            name: "License Key",
+            name: "🔑 License Key",
             value: `\`${key}\``
           },
           {
-            name: "Expires",
+            name: "📅 Expires",
             value: expiresText
           }
         )
@@ -364,7 +364,7 @@ bot.on("interactionCreate", async interaction => {
     } catch {
 
       console.log(
-        "Could not DM user"
+        "❌ Could not DM user"
       );
 
     }
@@ -387,7 +387,7 @@ bot.on("interactionCreate", async interaction => {
 
     if (!foundKey) {
       return interaction.reply({
-        content: "No license found",
+        content: "❌ No license found",
         ephemeral: true
       });
     }
@@ -405,27 +405,27 @@ bot.on("interactionCreate", async interaction => {
 
     const embed =
       new EmbedBuilder()
-        .setTitle("Your License")
-        .setColor(0x5865F2)
+        .setTitle("🔐 Your License")
+        .setColor(0x1E3A8A)
         .addFields(
           {
-            name: "License Key",
+            name: "🔑 License Key",
             value: `\`${foundKey.key}\``
           },
           {
-            name: "Expires",
+            name: "📅 Expires",
             value: expiresText,
             inline: true
           },
           {
-            name: "Status",
+            name: "✅ Status",
             value: expired
               ? "Expired"
               : "Active",
             inline: true
           },
           {
-            name: "HWID",
+            name: "🖥️ HWID",
             value:
               foundKey.hwid ||
               "Not Bound"
@@ -455,7 +455,7 @@ bot.on("interactionCreate", async interaction => {
 
     if (!foundKey) {
       return interaction.reply({
-        content: "No key found",
+        content: "❌ No key found",
         ephemeral: true
       });
     }
@@ -478,7 +478,7 @@ bot.on("interactionCreate", async interaction => {
 
       return interaction.reply({
         content:
-          `Wait ${Math.ceil(
+          `⏳ Wait ${Math.ceil(
             remaining / 3600000
           )} hours before resetting again.`,
         ephemeral: true
@@ -493,7 +493,7 @@ bot.on("interactionCreate", async interaction => {
 
     return interaction.reply({
       content:
-        "HWID reset successfully",
+        "✅ HWID reset successfully",
       ephemeral: true
     });
   }
@@ -516,7 +516,7 @@ bot.on("interactionCreate", async interaction => {
 
     if (!allowed) {
       return interaction.reply({
-        content: " No permission",
+        content: "❌ No permission",
         ephemeral: true
       });
     }
@@ -534,9 +534,9 @@ bot.on("interactionCreate", async interaction => {
           : "Never";
 
       return `🔑 ${k.key}
- <@${k.userId}>
- ${expires}
- ${k.hwid ? "Bound" : "Unbound"}
+👤 <@${k.userId}>
+📅 ${expires}
+🖥️ ${k.hwid ? "Bound" : "Unbound"}
 `;
 
     }).join("\n");
@@ -617,7 +617,7 @@ bot.on("interactionCreate", async interaction => {
               value:
                 `\`${revokedKey}\``
             })
-            .setColor(0xED4245)
+            .setColor(0x1E3A8A)
         ]
       });
 
@@ -644,7 +644,7 @@ bot.on("interactionCreate", async interaction => {
             value:
               `\`${revokedKey}\``
           })
-          .setColor(0xED4245)
+          .setColor(0x1E3A8A)
       ]
     });
   }
