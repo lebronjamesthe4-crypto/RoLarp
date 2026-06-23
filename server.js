@@ -163,11 +163,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("resethwid")
-    .setDescription("Reset your HWID or a user's HWID")
-    .addUserOption(option =>
-      option.setName("user")
-        .setDescription("The user whose HWID you want to reset (Staff Only)")
-        .setRequired(false) // 👈 Optional argument
+    .setDescription("Reset your HWID or target a specific license key")
+    .addStringOption(option =>
+      option.setName("key")
+        .setDescription("The specific license key to reset (Staff Only)")
+        .setRequired(false) // 👈 Changed to string option for the key
     ),
 
   new SlashCommandBuilder()
@@ -324,55 +324,70 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "resethwid") {
-    const targetUser = interaction.options.getUser("user");
+    const inputKey = interaction.options.getString("key");
     const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
-    // If they specified a user but they aren't staff, block them
-    if (targetUser && !isStaff) {
+    // If they provided a specific key but they aren't staff, block them
+    if (inputKey && !isStaff) {
       return interaction.reply({
-        content: "❌ You do not have permission to reset other users' HWIDs.",
+        content: "❌ You do not have permission to reset specific license keys.",
         ephemeral: true
       });
     }
 
-    // Determine whose key we are looking up
-    const userToReset = targetUser || interaction.user;
-    const isSelfReset = userToReset.id === interaction.user.id;
+    let foundKey;
 
-    const foundKey = await LicenseKey.findOne({ userId: userToReset.id });
+    if (inputKey) {
+      // Staff mode: Look up the provided key directly
+      const normalizedKey = inputKey.trim().toUpperCase();
+      foundKey = await LicenseKey.findOne({ key: normalizedKey });
 
-    if (!foundKey) {
-      return interaction.reply({
-        content: isSelfReset ? "❌ No key found" : `❌ No key found for ${targetUser}`,
-        ephemeral: true
-      });
-    }
-
-    // Cooldown check (ONLY applies to regular users resetting themselves. Staff bypass this.)
-    if (isSelfReset && !isStaff) {
-      const cooldown = 24 * 60 * 60 * 1000;
-      const now = Date.now();
-
-      if (now - (foundKey.lastReset || 0) < cooldown) {
-        const remaining = cooldown - (now - foundKey.lastReset);
+      if (!foundKey) {
         return interaction.reply({
-          content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting again.`,
+          content: `❌ Could not find the license key: \`${normalizedKey}\``,
           ephemeral: true
         });
       }
+    } else {
+      // User mode: Find the key belonging to the runner
+      foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
+
+      if (!foundKey) {
+        return interaction.reply({
+          content: "❌ You don't have a license key assigned to your account.",
+          ephemeral: true
+        });
+      }
+
+      // Cooldown check (ONLY if a non-staff is resetting their own key)
+      if (!isStaff) {
+        const cooldown = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        if (now - (foundKey.lastReset || 0) < cooldown) {
+          const remaining = cooldown - (now - foundKey.lastReset);
+          return interaction.reply({
+            content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting your HWID again.`,
+            ephemeral: true
+          });
+        }
+      }
     }
 
-    // Reset the HWID
+    // Process the HWID wipe
     foundKey.hwid = null;
-    if (isSelfReset) {
-      foundKey.lastReset = Date.now(); // Log the cooldown timestamp if resetting themselves
+    
+    // Only apply a cooldown timestamp if the user did a self-reset without staff privileges
+    if (!inputKey && !isStaff) {
+      foundKey.lastReset = Date.now();
     }
+    
     await foundKey.save();
 
     return interaction.reply({
-      content: isSelfReset 
-        ? "✅ Your HWID has been reset successfully." 
-        : `✅ Successfully reset HWID for ${targetUser}.`,
+      content: inputKey 
+        ? `✅ Successfully reset HWID for license key \`${foundKey.key}\`.`
+        : "✅ Your license key's HWID has been reset successfully.",
       ephemeral: true
     });
   }
