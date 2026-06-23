@@ -50,7 +50,7 @@ const GUILD_ID = "1507127260547645610";
 const CUSTOMER_ROLE_ID = "1507145590528540822";
 const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
-const SUPPORT_ROLE_ID = "1507128660048478288"; // 👈 Your Support Team Role ID
+const SUPPORT_ROLE_ID = "1507128660048478288"; 
 
 // Array of all roles authorized to run staff commands
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
@@ -163,7 +163,12 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("resethwid")
-    .setDescription("Reset your HWID"),
+    .setDescription("Reset your HWID or a user's HWID")
+    .addUserOption(option =>
+      option.setName("user")
+        .setDescription("The user whose HWID you want to reset (Staff Only)")
+        .setRequired(false) // 👈 Optional argument
+    ),
 
   new SlashCommandBuilder()
     .setName("keys")
@@ -209,7 +214,6 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "genkey") {
-    // Check if user has at least one of the staff roles
     const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
@@ -320,32 +324,55 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "resethwid") {
-    const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
+    const targetUser = interaction.options.getUser("user");
+    const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
+
+    // If they specified a user but they aren't staff, block them
+    if (targetUser && !isStaff) {
+      return interaction.reply({
+        content: "❌ You do not have permission to reset other users' HWIDs.",
+        ephemeral: true
+      });
+    }
+
+    // Determine whose key we are looking up
+    const userToReset = targetUser || interaction.user;
+    const isSelfReset = userToReset.id === interaction.user.id;
+
+    const foundKey = await LicenseKey.findOne({ userId: userToReset.id });
 
     if (!foundKey) {
       return interaction.reply({
-        content: "❌ No key found",
+        content: isSelfReset ? "❌ No key found" : `❌ No key found for ${targetUser}`,
         ephemeral: true
       });
     }
 
-    const cooldown = 24 * 60 * 60 * 1000;
-    const now = Date.now();
+    // Cooldown check (ONLY applies to regular users resetting themselves. Staff bypass this.)
+    if (isSelfReset && !isStaff) {
+      const cooldown = 24 * 60 * 60 * 1000;
+      const now = Date.now();
 
-    if (now - (foundKey.lastReset || 0) < cooldown) {
-      const remaining = cooldown - (now - foundKey.lastReset);
-      return interaction.reply({
-        content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting again.`,
-        ephemeral: true
-      });
+      if (now - (foundKey.lastReset || 0) < cooldown) {
+        const remaining = cooldown - (now - foundKey.lastReset);
+        return interaction.reply({
+          content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting again.`,
+          ephemeral: true
+        });
+      }
     }
 
+    // Reset the HWID
     foundKey.hwid = null;
-    foundKey.lastReset = now;
+    if (isSelfReset) {
+      foundKey.lastReset = Date.now(); // Log the cooldown timestamp if resetting themselves
+    }
     await foundKey.save();
 
     return interaction.reply({
-      content: "✅ HWID reset successfully",
+      content: isSelfReset 
+        ? "✅ Your HWID has been reset successfully." 
+        : `✅ Successfully reset HWID for ${targetUser}.`,
       ephemeral: true
     });
   }
@@ -355,7 +382,6 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "keys") {
-    // Check if user has at least one of the staff roles
     const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
@@ -383,7 +409,6 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "revokekey") {
-    // Check if user has at least one of the staff roles
     const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
