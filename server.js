@@ -50,6 +50,10 @@ const GUILD_ID = "1507127260547645610";
 const CUSTOMER_ROLE_ID = "1507145590528540822";
 const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
+const SUPPORT_ROLE_ID = "1507128660048478288"; // 👈 Your Support Team Role ID
+
+// Array of all roles authorized to run staff commands
+const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
 /* =========================
    LINKS
@@ -66,7 +70,6 @@ const SETUP_LINK =
 ========================= */
 
 app.post("/validate", async (req, res) => {
-
   const { key, hwid } = req.body;
 
   if (!key) {
@@ -134,7 +137,6 @@ bot.once("ready", () => {
 ========================= */
 
 const commands = [
-
   new SlashCommandBuilder()
     .setName("genkey")
     .setDescription("Generate a license key")
@@ -175,17 +177,13 @@ const commands = [
         .setDescription("User")
         .setRequired(true)
     )
-
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 
 (async () => {
-
   try {
-
     console.log("🔄 Registering commands...");
-
     await rest.put(
       Routes.applicationGuildCommands(
         CLIENT_ID,
@@ -193,13 +191,10 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
       ),
       { body: commands }
     );
-
     console.log("✅ Commands registered");
-
   } catch (err) {
     console.error(err);
   }
-
 })();
 
 /* =========================
@@ -207,7 +202,6 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 ========================= */
 
 bot.on("interactionCreate", async interaction => {
-
   if (!interaction.isChatInputCommand()) return;
 
   /* =========================
@@ -215,12 +209,8 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "genkey") {
-
-    const member = interaction.member;
-
-    const allowed =
-      member.roles.cache.has(MANAGEMENT_ROLE_ID) ||
-      member.roles.cache.has(ADMIN_ROLE_ID);
+    // Check if user has at least one of the staff roles
+    const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
       return interaction.reply({
@@ -229,67 +219,29 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const targetUser =
-      interaction.options.getUser("user");
+    const targetUser = interaction.options.getUser("user");
+    const duration = interaction.options.getString("duration");
 
-    const duration =
-      interaction.options.getString("duration");
-
-    const key =
-      "LARP-" +
-      crypto.randomBytes(4)
-        .toString("hex")
-        .toUpperCase();
+    const key = "LARP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
 
     let expires = null;
     let expiresText = "Never";
 
-    /* =========================
-       1 DAY
-    ========================= */
-
     if (duration === "1day") {
-
       const d = new Date();
-
       d.setDate(d.getDate() + 1);
-
       expires = d.getTime();
-
-      expiresText =
-        d.toLocaleDateString();
-    }
-
-    /* =========================
-       7 DAYS
-    ========================= */
-
-    else if (duration === "7days") {
-
+      expiresText = d.toLocaleDateString();
+    } else if (duration === "7days") {
       const d = new Date();
-
       d.setDate(d.getDate() + 7);
-
       expires = d.getTime();
-
-      expiresText =
-        d.toLocaleDateString();
-    }
-
-    /* =========================
-       1 MONTH
-    ========================= */
-
-    else if (duration === "1month") {
-
+      expiresText = d.toLocaleDateString();
+    } else if (duration === "1month") {
       const d = new Date();
-
       d.setMonth(d.getMonth() + 1);
-
       expires = d.getTime();
-
-      expiresText =
-        d.toLocaleDateString();
+      expiresText = d.toLocaleDateString();
     }
 
     await LicenseKey.create({
@@ -301,77 +253,35 @@ bot.on("interactionCreate", async interaction => {
       lastReset: 0
     });
 
-    /* =========================
-       DM EMBED
-    ========================= */
-
     const dmEmbed = new EmbedBuilder()
       .setTitle("🔐 Your License")
       .setColor(0x1E3A8A)
       .addFields(
-        {
-          name: "🔑 License Key",
-          value: `\`${key}\``
-        },
-        {
-          name: "📅 Expires",
-          value: expiresText
-        },
-        {
-          name: "⬇️ Download",
-          value: DOWNLOAD_LINK
-        },
-        {
-          name: "🛠️ Setup Guide",
-          value: SETUP_LINK
-        }
+        { name: "🔑 License Key", value: `\`${key}\`` },
+        { name: "📅 Expires", value: expiresText },
+        { name: "⬇️ Download", value: DOWNLOAD_LINK },
+        { name: "🛠️ Setup Guide", value: SETUP_LINK }
       )
-      .setFooter({
-        text: "RoLarp Licensing"
-      })
+      .setFooter({ text: "RoLarp Licensing" })
       .setTimestamp();
 
-    /* =========================
-       CHANNEL EMBED
-    ========================= */
-
-    const channelEmbed =
-      new EmbedBuilder()
-        .setTitle("✅ License Generated")
-        .setColor(0x1E3A8A)
-        .addFields(
-          {
-            name: "👤 User",
-            value: `${targetUser}`
-          },
-          {
-            name: "🔑 License Key",
-            value: `\`${key}\``
-          },
-          {
-            name: "📅 Expires",
-            value: expiresText
-          }
-        )
-        .setTimestamp();
+    const channelEmbed = new EmbedBuilder()
+      .setTitle("✅ License Generated")
+      .setColor(0x1E3A8A)
+      .addFields(
+        { name: "👤 User", value: `${targetUser}` },
+        { name: "🔑 License Key", value: `\`${key}\`` },
+        { name: "📅 Expires", value: expiresText }
+      )
+      .setTimestamp();
 
     try {
-
-      await targetUser.send({
-        embeds: [dmEmbed]
-      });
-
+      await targetUser.send({ embeds: [dmEmbed] });
     } catch {
-
-      console.log(
-        "❌ Could not DM user"
-      );
-
+      console.log("❌ Could not DM user");
     }
 
-    return interaction.reply({
-      embeds: [channelEmbed]
-    });
+    return interaction.reply({ embeds: [channelEmbed] });
   }
 
   /* =========================
@@ -379,11 +289,7 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "license") {
-
-    const foundKey =
-      await LicenseKey.findOne({
-        userId: interaction.user.id
-      });
+    const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
 
     if (!foundKey) {
       return interaction.reply({
@@ -392,66 +298,29 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const expired =
-      foundKey.expires &&
-      Date.now() > foundKey.expires;
+    const expired = foundKey.expires && Date.now() > foundKey.expires;
+    const expiresText = foundKey.expires ? new Date(foundKey.expires).toLocaleDateString() : "Never";
 
-    const expiresText =
-      foundKey.expires
-        ? new Date(
-            foundKey.expires
-          ).toLocaleDateString()
-        : "Never";
+    const embed = new EmbedBuilder()
+      .setTitle("🔐 Your License")
+      .setColor(0x1E3A8A)
+      .addFields(
+        { name: "🔑 License Key", value: `\`${foundKey.key}\`` },
+        { name: "📅 Expires", value: expiresText, inline: true },
+        { name: "✅ Status", value: expired ? "Expired" : "Active", inline: true },
+        { name: "🖥️ HWID", value: foundKey.hwid || "Not Bound" }
+      )
+      .setTimestamp();
 
-    const embed =
-      new EmbedBuilder()
-        .setTitle("🔐 Your License")
-        .setColor(0x1E3A8A)
-        .addFields(
-          {
-            name: "🔑 License Key",
-            value: `\`${foundKey.key}\``
-          },
-          {
-            name: "📅 Expires",
-            value: expiresText,
-            inline: true
-          },
-          {
-            name: "✅ Status",
-            value: expired
-              ? "Expired"
-              : "Active",
-            inline: true
-          },
-          {
-            name: "🖥️ HWID",
-            value:
-              foundKey.hwid ||
-              "Not Bound"
-          }
-        )
-        .setTimestamp();
-
-    return interaction.reply({
-      embeds: [embed],
-      ephemeral: true
-    });
+    return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
   /* =========================
      /RESETHWID
   ========================= */
 
-  if (
-    interaction.commandName ===
-    "resethwid"
-  ) {
-
-    const foundKey =
-      await LicenseKey.findOne({
-        userId: interaction.user.id
-      });
+  if (interaction.commandName === "resethwid") {
+    const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
 
     if (!foundKey) {
       return interaction.reply({
@@ -460,40 +329,23 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const cooldown =
-      24 * 60 * 60 * 1000;
-
+    const cooldown = 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    if (
-      now -
-        (foundKey.lastReset || 0) <
-      cooldown
-    ) {
-
-      const remaining =
-        cooldown -
-        (now -
-          foundKey.lastReset);
-
+    if (now - (foundKey.lastReset || 0) < cooldown) {
+      const remaining = cooldown - (now - foundKey.lastReset);
       return interaction.reply({
-        content:
-          `⏳ Wait ${Math.ceil(
-            remaining / 3600000
-          )} hours before resetting again.`,
+        content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours before resetting again.`,
         ephemeral: true
       });
     }
 
     foundKey.hwid = null;
-
     foundKey.lastReset = now;
-
     await foundKey.save();
 
     return interaction.reply({
-      content:
-        "✅ HWID reset successfully",
+      content: "✅ HWID reset successfully",
       ephemeral: true
     });
   }
@@ -503,16 +355,8 @@ bot.on("interactionCreate", async interaction => {
   ========================= */
 
   if (interaction.commandName === "keys") {
-
-    const member = interaction.member;
-
-    const allowed =
-      member.roles.cache.has(
-        MANAGEMENT_ROLE_ID
-      ) ||
-      member.roles.cache.has(
-        ADMIN_ROLE_ID
-      );
+    // Check if user has at least one of the staff roles
+    const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
       return interaction.reply({
@@ -521,30 +365,15 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const keys =
-      await LicenseKey.find().limit(20);
+    const keys = await LicenseKey.find().limit(20);
 
     const formatted = keys.map(k => {
-
-      const expires =
-        k.expires
-          ? new Date(
-              k.expires
-            ).toLocaleDateString()
-          : "Never";
-
-      return `🔑 ${k.key}
-👤 <@${k.userId}>
-📅 ${expires}
-🖥️ ${k.hwid ? "Bound" : "Unbound"}
-`;
-
+      const expires = k.expires ? new Date(k.expires).toLocaleDateString() : "Never";
+      return `🔑 ${k.key}\n👤 <@${k.userId}>\n📅 ${expires}\n🖥️ ${k.hwid ? "Bound" : "Unbound"}\n`;
     }).join("\n");
 
     return interaction.reply({
-      content:
-        formatted ||
-        "No keys found",
+      content: formatted || "No keys found",
       ephemeral: true
     });
   }
@@ -553,20 +382,9 @@ bot.on("interactionCreate", async interaction => {
      /REVOKEKEY
   ========================= */
 
-  if (
-    interaction.commandName ===
-    "revokekey"
-  ) {
-
-    const member = interaction.member;
-
-    const allowed =
-      member.roles.cache.has(
-        MANAGEMENT_ROLE_ID
-      ) ||
-      member.roles.cache.has(
-        ADMIN_ROLE_ID
-      );
+  if (interaction.commandName === "revokekey") {
+    // Check if user has at least one of the staff roles
+    const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
     if (!allowed) {
       return interaction.reply({
@@ -575,80 +393,43 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const targetUser =
-      interaction.options.getUser(
-        "user"
-      );
-
-    const foundKey =
-      await LicenseKey.findOne({
-        userId: targetUser.id
-      });
+    const targetUser = interaction.options.getUser("user");
+    const foundKey = await LicenseKey.findOne({ userId: targetUser.id });
 
     if (!foundKey) {
       return interaction.reply({
-        content:
-          "❌ No key found for that user",
+        content: "❌ No key found for that user",
         ephemeral: true
       });
     }
 
-    const revokedKey =
-      foundKey.key;
-
-    await LicenseKey.deleteOne({
-      userId: targetUser.id
-    });
+    const revokedKey = foundKey.key;
+    await LicenseKey.deleteOne({ userId: targetUser.id });
 
     try {
-
       await targetUser.send({
         embeds: [
           new EmbedBuilder()
-            .setTitle(
-              "❌ License Revoked"
-            )
-            .setDescription(
-              "Your RoLarp license has been revoked."
-            )
-            .addFields({
-              name:
-                "🔑 Revoked Key",
-              value:
-                `\`${revokedKey}\``
-            })
+            .setTitle("❌ License Revoked")
+            .setDescription("Your RoLarp license has been revoked.")
+            .addFields({ name: "🔑 Revoked Key", value: `\`${revokedKey}\`` })
             .setColor(0x1E3A8A)
         ]
       });
-
     } catch {
-
-      console.log(
-        "❌ Could not DM revoked user"
-      );
-
+      console.log("❌ Could not DM revoked user");
     }
 
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
-          .setTitle(
-            "✅ License Revoked"
-          )
-          .setDescription(
-            `${targetUser}'s license was revoked.`
-          )
-          .addFields({
-            name:
-              "🔑 Revoked Key",
-            value:
-              `\`${revokedKey}\``
-          })
+          .setTitle("✅ License Revoked")
+          .setDescription(`${targetUser}'s license was revoked.`)
+          .addFields({ name: "🔑 Revoked Key", value: `\`${revokedKey}\`` })
           .setColor(0x1E3A8A)
       ]
     });
   }
-
 });
 
 bot.login(DISCORD_TOKEN);
@@ -658,7 +439,5 @@ bot.login(DISCORD_TOKEN);
 ========================= */
 
 app.listen(PORT, () => {
-  console.log(
-    `🚀 Server running on ${PORT}`
-  );
+  console.log(`🚀 Server running on ${PORT}`);
 });
