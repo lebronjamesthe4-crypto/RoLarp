@@ -9,7 +9,8 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  EmbedBuilder
+  EmbedBuilder,
+  WebhookClient // 👈 Added WebhookClient for logging
 } = require("discord.js");
 
 const app = express();
@@ -54,6 +55,30 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 // Array of all roles authorized to run staff commands
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
+
+// Webhook Link for Logging
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
+const logger = new WebhookClient({ url: WEBHOOK_URL });
+
+/* =========================
+   HELPER FUNCTION: LOG TO WEBHOOK
+========================= */
+async function sendActionLog(actionName, executor, descriptionFields = []) {
+  try {
+    const logEmbed = new EmbedBuilder()
+      .setTitle(`🤖 Command Log: /${actionName}`)
+      .setColor(0x00FF00) // Green color for logs
+      .addFields(
+        { name: "👤 Executed By", value: `${executor} (\`${executor.id}\`)`, inline: false },
+        ...descriptionFields
+      )
+      .setTimestamp();
+
+    await logger.send({ embeds: [logEmbed] });
+  } catch (err) {
+    console.error("❌ Failed to send webhook log:", err);
+  }
+}
 
 /* =========================
    LINKS
@@ -167,7 +192,7 @@ const commands = [
     .addStringOption(option =>
       option.setName("key")
         .setDescription("The specific license key to reset (Staff Only)")
-        .setRequired(false) // 👈 Changed to string option for the key
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()
@@ -285,6 +310,13 @@ bot.on("interactionCreate", async interaction => {
       console.log("❌ Could not DM user");
     }
 
+    // Log action to Webhook
+    await sendActionLog("genkey", interaction.user, [
+      { name: "🎯 For User", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
+      { name: "🔑 Generated Key", value: `\`${key}\``, inline: true },
+      { name: "⏱️ Duration", value: duration, inline: true }
+    ]);
+
     return interaction.reply({ embeds: [channelEmbed] });
   }
 
@@ -316,6 +348,11 @@ bot.on("interactionCreate", async interaction => {
       )
       .setTimestamp();
 
+    // Log action to Webhook
+    await sendActionLog("license", interaction.user, [
+      { name: "ℹ️ Action", value: "Checked their own license status.", inline: false }
+    ]);
+
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
 
@@ -327,7 +364,6 @@ bot.on("interactionCreate", async interaction => {
     const inputKey = interaction.options.getString("key");
     const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
-    // If they provided a specific key but they aren't staff, block them
     if (inputKey && !isStaff) {
       return interaction.reply({
         content: "❌ You do not have permission to reset specific license keys.",
@@ -338,7 +374,6 @@ bot.on("interactionCreate", async interaction => {
     let foundKey;
 
     if (inputKey) {
-      // Staff mode: Look up the provided key directly
       const normalizedKey = inputKey.trim().toUpperCase();
       foundKey = await LicenseKey.findOne({ key: normalizedKey });
 
@@ -349,7 +384,6 @@ bot.on("interactionCreate", async interaction => {
         });
       }
     } else {
-      // User mode: Find the key belonging to the runner
       foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
 
       if (!foundKey) {
@@ -359,7 +393,6 @@ bot.on("interactionCreate", async interaction => {
         });
       }
 
-      // Cooldown check (ONLY if a non-staff is resetting their own key)
       if (!isStaff) {
         const cooldown = 24 * 60 * 60 * 1000;
         const now = Date.now();
@@ -374,15 +407,20 @@ bot.on("interactionCreate", async interaction => {
       }
     }
 
-    // Process the HWID wipe
     foundKey.hwid = null;
     
-    // Only apply a cooldown timestamp if the user did a self-reset without staff privileges
     if (!inputKey && !isStaff) {
       foundKey.lastReset = Date.now();
     }
     
     await foundKey.save();
+
+    // Log action to Webhook
+    await sendActionLog("resethwid", interaction.user, [
+      { name: "🔑 Key Impacted", value: `\`${foundKey.key}\``, inline: true },
+      { name: "👤 Key Holder ID", value: `<@${foundKey.userId}>`, inline: true },
+      { name: "🛠️ Mode", value: inputKey ? "Staff Force-Reset" : "Self-Reset", inline: true }
+    ]);
 
     return interaction.reply({
       content: inputKey 
@@ -412,6 +450,11 @@ bot.on("interactionCreate", async interaction => {
       const expires = k.expires ? new Date(k.expires).toLocaleDateString() : "Never";
       return `🔑 ${k.key}\n👤 <@${k.userId}>\n📅 ${expires}\n🖥️ ${k.hwid ? "Bound" : "Unbound"}\n`;
     }).join("\n");
+
+    // Log action to Webhook
+    await sendActionLog("keys", interaction.user, [
+      { name: "ℹ️ Action", value: "Viewed the active key log list.", inline: false }
+    ]);
 
     return interaction.reply({
       content: formatted || "No keys found",
@@ -459,6 +502,12 @@ bot.on("interactionCreate", async interaction => {
     } catch {
       console.log("❌ Could not DM revoked user");
     }
+
+    // Log action to Webhook
+    await sendActionLog("revokekey", interaction.user, [
+      { name: "🎯 Revoked From", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
+      { name: "🔑 Key Destroyed", value: `\`${revokedKey}\``, inline: true }
+    ]);
 
     return interaction.reply({
       embeds: [
