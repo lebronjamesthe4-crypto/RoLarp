@@ -179,7 +179,7 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
   ]);
 }
 
-// 🎮 Roblox Precise User ID Lookup
+// 🎮 Roblox User ID Fetcher Helper
 async function getRobloxUserId(username) {
   try {
     const response = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -198,14 +198,15 @@ async function getRobloxUserId(username) {
   }
 }
 
-// 🎮 Fixed Public Inventory Page Gamepass Verification Lookup
+// 🎮 Fixed Roblox Inventory Gamepass Verification Lookup
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    const response = await fetch(`https://inventory.roblox.com/v2/users/${robloxUserId}/inventory?assetTypes=GamePass&limit=100&sortOrder=Desc`);
+    // 34 is the internal Roblox asset category ID path parameter for Gamepasses
+    const response = await fetch(`https://inventory.roblox.com/v2/users/${robloxUserId}/inventory/34?limit=100&sortOrder=Desc`);
     const data = await response.json();
     
     if (data && data.data) {
-      // Direct asset validation map
+      // Direct array validation check matching the assetId string
       return data.data.some(item => String(item.assetId) === String(gamepassId));
     }
     return false;
@@ -568,7 +569,7 @@ bot.on("interactionCreate", async interaction => {
         return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
       }
 
-      // 2. Check Ownership status via v2 direct list matching
+      // 2. Check Ownership status via v2 path matching
       const ownsPass = await checkGamepassOwnership(robloxUserId, config.gamepassId);
       if (!ownsPass) {
         return interaction.editReply({ 
