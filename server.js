@@ -63,7 +63,7 @@ const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 
-// Webhook B: Handles regular management command audits (/genkey, /revokekey)
+// Webhook B: Handles regular management command audits (/genkey, /revokekey, /resethwid)
 const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
@@ -120,7 +120,8 @@ async function sendActionLog(actionName, executor, descriptionFields = []) {
   }
 }
 
-async function generateAndDeliverKey(userId, duration, fundingSource = "Manual") {
+// Added executor parameter to track who initiated the key generation
+async function generateAndDeliverKey(userId, duration, fundingSource = "Manual", executor = null) {
   const key = "LARP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
   let expires = null;
   let expiresText = "Never";
@@ -172,10 +173,13 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
     console.log(`❌ Couldn't execute user roles/DMs for ${userId}:`, err.message);
   }
 
-  await sendActionLog("license_provision", { id: userId, toString: () => `<@${userId}>` }, [
+  // Use the provided executor or fallback to the target user (if self-claimed)
+  const actionExecutor = executor || { id: userId, toString: () => `<@${userId}>` };
+  await sendActionLog("license_provision", actionExecutor, [
+    { name: "🎯 Target User", value: `<@${userId}> (\`${userId}\`)`, inline: false },
     { name: "🔑 Generated Key", value: `\`${key}\``, inline: true },
     { name: "⏱️ Duration", value: duration, inline: true },
-    { name: "🧾 Method", value: fundingSource, inline: false }
+    { name: "🧾 Method", value: fundingSource, inline: true }
   ]);
 }
 
@@ -201,13 +205,13 @@ async function getRobloxUserId(username) {
 // 🎮 Fixed Roblox Inventory Gamepass Verification Lookup
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    // 34 is the internal Roblox asset category ID path parameter for Gamepasses
-    const response = await fetch(`https://inventory.roblox.com/v2/users/${robloxUserId}/inventory/34?limit=100&sortOrder=Desc`);
+    // Using the v1 specific item lookup to bypass the Asset 34 block
+    const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/GamePass/${gamepassId}`);
     const data = await response.json();
     
-    if (data && data.data) {
-      // Direct array validation check matching the assetId string
-      return data.data.some(item => String(item.assetId) === String(gamepassId));
+    // If the data array is returned and has content, they own it
+    if (data && Array.isArray(data.data)) {
+      return data.data.length > 0;
     }
     return false;
   } catch (err) {
@@ -301,15 +305,17 @@ const commands = [
           { name: "1 Month", value: "1month" },
           { name: "Lifetime", value: "lifetime" }
         )
-    )
-    .addStringOption(option => option.setName("reason").setDescription("Reason for logging logs").setRequired(false)),
+    ),
 
   new SlashCommandBuilder().setName("license").setDescription("View your active license pass"),
+  
   new SlashCommandBuilder()
     .setName("resethwid")
     .setDescription("Reset your HWID binding or target a specific key link")
     .addStringOption(option => option.setName("key").setDescription("Target license key string (Staff Only)").setRequired(false)),
+    
   new SlashCommandBuilder().setName("keys").setDescription("View active database entries list"),
+  
   new SlashCommandBuilder()
     .setName("revokekey")
     .setDescription("Destroy a license token permanently")
@@ -421,7 +427,8 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff");
+      // We pass interaction.user to track which staff member generated the key
+      await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff", interaction.user);
       return interaction.editReply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>` });
     }
 
@@ -475,6 +482,15 @@ bot.on("interactionCreate", async interaction => {
       if (!inputKey && !isStaff) foundKey.lastReset = Date.now();
       await foundKey.save();
 
+      // Log the action with Target details
+      await sendActionLog("resethwid", interaction.user, [
+        { 
+          name: "🎯 Target Reset", 
+          value: inputKey ? `Key: \`${inputKey.toUpperCase()}\` (Owner: <@${foundKey.userId}>)` : `<@${interaction.user.id}> (Self)`, 
+          inline: false 
+        }
+      ]);
+
       return interaction.editReply({ content: "✅ HWID reset successful." });
     }
 
@@ -500,6 +516,13 @@ bot.on("interactionCreate", async interaction => {
       if (!foundKey) return interaction.editReply({ content: "❌ Key not found." });
 
       await LicenseKey.deleteOne({ key: normalizedKey });
+      
+      // Log the revocation detailing who lost their key
+      await sendActionLog("revokekey", interaction.user, [
+        { name: "🗑️ Destroyed Key", value: `\`${normalizedKey}\``, inline: true },
+        { name: "🎯 Original Owner", value: `<@${foundKey.userId}> (\`${foundKey.userId}\`)`, inline: true }
+      ]);
+
       return interaction.editReply({ content: `✅ License key \`${normalizedKey}\` destroyed.` });
     }
   }
@@ -569,7 +592,7 @@ bot.on("interactionCreate", async interaction => {
         return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
       }
 
-      // 2. Check Ownership status via v2 path matching
+      // 2. Check Ownership status via updated v1 endpoint
       const ownsPass = await checkGamepassOwnership(robloxUserId, config.gamepassId);
       if (!ownsPass) {
         return interaction.editReply({ 
@@ -583,8 +606,8 @@ bot.on("interactionCreate", async interaction => {
         return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
       }
 
-      // 4. Automation check cleared: Deliver key instantly
-      await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`);
+      // 4. Automation check cleared: Deliver key instantly (Pass interaction.user as the executor)
+      await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`, interaction.user);
 
       // 5. Fire automated validation log card
       const robuxLog = new EmbedBuilder()
@@ -616,7 +639,8 @@ bot.on("interactionCreate", async interaction => {
     await interaction.update({ components: [] });
 
     if (action === "approve") {
-      await generateAndDeliverKey(targetUserId, duration, "G2A-Voucher-Verified");
+      // interaction.user is the staff clicking the button
+      await generateAndDeliverKey(targetUserId, duration, "G2A-Voucher-Verified", interaction.user);
       return interaction.followUp({ content: `⚡ **Clear:** Issued a **${duration}** access license token straight to <@${targetUserId}>.` });
     }
 
