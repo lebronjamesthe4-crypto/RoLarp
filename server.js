@@ -4,7 +4,7 @@ const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require
 const bot = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = "1507541333219348570";
+const CLIENT_ID = "1519446433747570769";
 const GUILD_ID = "1507127260547645610";
 
 // 2. Define a Simple Command
