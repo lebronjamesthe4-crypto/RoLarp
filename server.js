@@ -62,11 +62,11 @@ const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 // 🌟 LIVE CHANNEL & NEW WEBHOOK ROUTING 🌟
 const STAFF_VERIFICATION_CHANNEL_ID = "1519216751844524152"; 
 
-// Webhook A: Handles your /buy claims and approval logs (Updated to your new webhook)
+// Webhook A: Handles your /buy claims and approval logs
 const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 
-// Webhook B: Handles regular management command audits (/genkey, /revokekey)
+// Webhook B: Handles regular management command audits
 const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
@@ -77,17 +77,23 @@ const TIER_CONFIG = {
   "7days": {
     name: "Weekly",
     expectedCost: "3",
-    link: "https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140"
+    link: "https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140",
+    gamepassId: "1873036358",
+    gamepassLink: "https://www.roblox.com/game-pass/1873036358/Weekly-Key"
   },
   "1month": {
     name: "Monthly",
     expectedCost: "9",
-    link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081"
+    link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081",
+    gamepassId: "1891480404",
+    gamepassLink: "https://www.roblox.com/game-pass/1891480404/Monthly-Key"
   },
   "lifetime": {
     name: "Lifetime",
     expectedCost: "20",
-    link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011"
+    link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011",
+    gamepassId: "1883628287",
+    gamepassLink: "https://www.roblox.com/game-pass/1883628287/Lifetime-Key"
   }
 };
 
@@ -219,15 +225,24 @@ bot.once("ready", () => {
 const commands = [
   new SlashCommandBuilder()
     .setName("buy")
-    .setDescription("Purchase or redeem a pass tier access voucher")
+    .setDescription("Purchase or redeem an access pass tier access voucher")
     .addStringOption(option =>
       option.setName("duration")
         .setDescription("Select the time pass you want to obtain")
         .setRequired(true)
         .addChoices(
-          { name: "7 Days (Weekly - $3)", value: "7days" },
-          { name: "1 Month (Monthly - $9)", value: "1month" },
-          { name: "Lifetime Pass ($20)", value: "lifetime" }
+          { name: "7 Days (Weekly - $3 / Robux)", value: "7days" },
+          { name: "1 Month (Monthly - $9 / Robux)", value: "1month" },
+          { name: "Lifetime Pass ($20 / Robux)", value: "lifetime" }
+        )
+    )
+    .addStringOption(option =>
+      option.setName("method")
+        .setDescription("Select how you paid for your purchase")
+        .setRequired(true)
+        .addChoices(
+          { name: "G2A / Rewarble Voucher", value: "voucher" },
+          { name: "Roblox Gamepass", value: "roblox" }
         )
     ),
 
@@ -279,46 +294,74 @@ bot.on("interactionCreate", async interaction => {
   
   if (interaction.isChatInputCommand()) {
 
-    // /BUY COMMAND WITH MODAL TRIGGER
+    // /BUY COMMAND WITH MODAL DUAL INTEGRATION
     if (interaction.commandName === "buy") {
       const duration = interaction.options.getString("duration");
+      const method = interaction.options.getString("method");
       const config = TIER_CONFIG[duration];
 
-      const modal = new ModalBuilder()
-        .setCustomId(`buy_modal_${duration}`)
-        .setTitle(`🛒 Complete ${config.name} Pass ($${config.expectedCost})`);
+      if (method === "roblox") {
+        const modal = new ModalBuilder()
+          .setCustomId(`buy_modal_roblox_${duration}`)
+          .setTitle(`🎒 Verify ${config.name} Gamepass Purchase`);
 
-      const codeInput = new TextInputBuilder()
-        .setCustomId("voucher_code_input")
-        .setLabel("Paste your G2A / Rewarble Code Below:")
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder("Paste your 16-digit voucher token code here...")
-        .setMinLength(10)
-        .setMaxLength(50)
-        .setRequired(true);
+        const usernameInput = new TextInputBuilder()
+          .setCustomId("roblox_username_input")
+          .setLabel("Your Roblox Username:")
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder("Enter your exact Roblox username (NOT display name)")
+          .setRequired(true);
 
-      const amountInput = new TextInputBuilder()
-        .setCustomId("voucher_amount_input")
-        .setLabel(`Verify Card Value (Should be ${config.expectedCost}):`)
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder(`Enter your card's dollar value (e.g. ${config.expectedCost})`)
-        .setMaxLength(3)
-        .setRequired(true);
+        const linkNotice = new TextInputBuilder()
+          .setCustomId("roblox_link_notice")
+          .setLabel("Roblox Gamepass Purchase Link:")
+          .setStyle(TextInputStyle.Short)
+          .setValue(config.gamepassLink)
+          .setRequired(false);
 
-      const noticeInput = new TextInputBuilder()
-        .setCustomId("link_notice")
-        .setLabel("G2A Shop Purchasing Link:")
-        .setStyle(TextInputStyle.Short)
-        .setValue(config.link)
-        .setRequired(false);
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(linkNotice),
+          new ActionRowBuilder().addComponents(usernameInput)
+        );
 
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(noticeInput),
-        new ActionRowBuilder().addComponents(codeInput),
-        new ActionRowBuilder().addComponents(amountInput)
-      );
+        return interaction.showModal(modal);
+      } else {
+        const modal = new ModalBuilder()
+          .setCustomId(`buy_modal_voucher_${duration}`)
+          .setTitle(`🛒 Complete ${config.name} Pass ($${config.expectedCost})`);
 
-      return interaction.showModal(modal);
+        const codeInput = new TextInputBuilder()
+          .setCustomId("voucher_code_input")
+          .setLabel("Paste your G2A / Rewarble Code Below:")
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder("Paste your 16-digit voucher token code here...")
+          .setMinLength(10)
+          .setMaxLength(50)
+          .setRequired(true);
+
+        const amountInput = new TextInputBuilder()
+          .setCustomId("voucher_amount_input")
+          .setLabel(`Verify Card Value (Should be ${config.expectedCost}):`)
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder(`Enter your card's dollar value (e.g. ${config.expectedCost})`)
+          .setMaxLength(3)
+          .setRequired(true);
+
+        const noticeInput = new TextInputBuilder()
+          .setCustomId("link_notice")
+          .setLabel("G2A Shop Purchasing Link:")
+          .setStyle(TextInputStyle.Short)
+          .setValue(config.link)
+          .setRequired(false);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(noticeInput),
+          new ActionRowBuilder().addComponents(codeInput),
+          new ActionRowBuilder().addComponents(amountInput)
+        );
+
+        return interaction.showModal(modal);
+      }
     }
 
     // /GENKEY COMMAND
@@ -329,7 +372,6 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      // Fires generateAndDeliverKey helper which automatically grants CUSTOMER_ROLE_ID
       await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff");
       return interaction.reply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>`, ephemeral: true });
     }
@@ -415,11 +457,80 @@ bot.on("interactionCreate", async interaction => {
 
   /* --- MODAL INPUT SUBMISSION RECEIVER --- */
   if (interaction.isModalSubmit()) {
-    if (interaction.customId.startsWith("buy_modal_")) {
-      const duration = interaction.customId.split("_")[2];
+    
+    // METHOD A: ROBLOX INTERACTOR SUBMIT
+    if (interaction.customId.startsWith("buy_modal_roblox_")) {
+      const duration = interaction.customId.split("_")[3];
+      const robloxUsername = interaction.fields.getTextInputValue("roblox_username_input").trim();
+      const config = TIER_CONFIG[duration];
+
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        // 1. Fetch user data by name string via Roblox Endpoint API
+        const userRes = await fetch("https://users.roblox.com/v1/usernames/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usernames: [robloxUsername], excludeBannedUsers: false })
+        });
+        const userData = await userRes.json();
+
+        if (!userData.data || userData.data.length === 0) {
+          return interaction.editReply({ content: `❌ Could not find an active Roblox account matching \`${robloxUsername}\`. Check spelling inputs.` });
+        }
+
+        const robloxId = userData.data[0].id;
+        const realUsername = userData.data[0].name;
+
+        // 2. Fetch inventory query status targeting Gamepass ownership validation
+        const invRes = await fetch(`https://inventory.roblox.com/v1/users/${robloxId}/items/GamePass/${config.gamepassId}`);
+        const invData = await invRes.json();
+        
+        const ownsPass = invData.data && invData.data.length > 0;
+        const verificationStatus = ownsPass 
+          ? "✅ VERIFIED: User owns this Gamepass!" 
+          : "❌ NOT OWNED: Gamepass was not detected in this user's public inventory.";
+
+        const ticketEmbed = new EmbedBuilder()
+          .setTitle("🎟️ New Roblox Gamepass Verification Request")
+          .setColor(ownsPass ? 0x00FF00 : 0xFF0000)
+          .setDescription(`A user submitted a claim for a Robux Gamepass purchase. Verification results are detailed below.`)
+          .addFields(
+            { name: "👤 Discord User", value: `${interaction.user} (\`${interaction.user.id}\`)` },
+            { name: "🎮 Roblox Target Account", value: `[${realUsername}](https://www.roblox.com/users/${robloxId}/profile) (\`${robloxId}\`)` },
+            { name: "⏱️ Tier Wanted", value: `${config.name.toUpperCase()}`, inline: true },
+            { name: "🛡️ Automated Verification Check", value: `\`\`\`${verificationStatus}\`\`\``, inline: false }
+          )
+          .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`v_approve_${interaction.user.id}_${duration}`)
+            .setLabel("✅ Approve & Issue Key")
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId(`v_deny_${interaction.user.id}`)
+            .setLabel("❌ Deny / Fake Claim")
+            .setStyle(ButtonStyle.Danger)
+        );
+
+        await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
+
+        return interaction.editReply({ 
+          content: `✅ **Purchase claim sent to staff log dashboard!** Your claimed Roblox profile (\`${realUsername}\`) has been routed for processing. Make sure your Roblox inventory privacy settings are **Public** so staff can see your items if manual fallback check is required.`
+        });
+
+      } catch (err) {
+        console.error("Roblox checking pipeline crash:", err);
+        return interaction.editReply({ content: "❌ Failed routing Roblox validation data. Reach out to management." });
+      }
+    }
+
+    // METHOD B: VOUCHER METHOD
+    if (interaction.customId.startsWith("buy_modal_voucher_")) {
+      const duration = interaction.customId.split("_")[3];
       const codeValue = interaction.fields.getTextInputValue("voucher_code_input").trim();
       const userClaimedAmount = interaction.fields.getTextInputValue("voucher_amount_input").trim();
-
       const config = TIER_CONFIG[duration];
 
       await interaction.deferReply({ ephemeral: true });
@@ -456,7 +567,6 @@ bot.on("interactionCreate", async interaction => {
             .setStyle(ButtonStyle.Danger)
         );
 
-        // Dispatches right to Webhook A
         await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
 
         return interaction.editReply({ 
@@ -483,7 +593,7 @@ bot.on("interactionCreate", async interaction => {
     await interaction.update({ components: [] });
 
     if (action === "approve") {
-      await generateAndDeliverKey(targetUserId, duration, "G2A-Voucher-Verified");
+      await generateAndDeliverKey(targetUserId, duration, "Verified-Payment-Source");
       return interaction.followUp({ content: `⚡ **Clear:** Issued a **${duration}** access license token straight to <@${targetUserId}>.` });
     }
 
@@ -491,7 +601,7 @@ bot.on("interactionCreate", async interaction => {
       try {
         const customerUser = await bot.users.fetch(targetUserId);
         if (customerUser) {
-          await customerUser.send("❌ **Payment Rejected:** The code voucher input you passed was verified as **invalid**, **empty**, or **already redeemed** on the payout network.");
+          await customerUser.send("❌ **Payment Rejected:** The payment/assertion submission data you input was verified as **invalid**, **empty**, or **not found** on the validation systems network.");
         }
       } catch {}
       return interaction.followUp({ content: `🛑 **Reject:** Blocked payment assertion claim from <@${targetUserId}>.` });
@@ -505,5 +615,5 @@ bot.login(DISCORD_TOKEN);
    START EXPRESS SERVER
 ========================= */
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
