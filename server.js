@@ -57,13 +57,18 @@ const MANAGEMENT_ROLE_ID = "1507127911897890856";
 const ADMIN_ROLE_ID = "1507127797607432283";
 const SUPPORT_ROLE_ID = "1507128660048478288"; 
 
-// 🚨 CHANGE THIS TO YOUR STAFF CHANNEL ID IN DISCORD
-const STAFF_VERIFICATION_CHANNEL_ID = "YOUR_STAFF_CHANNEL_ID_HERE"; 
-
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
-const logger = new WebhookClient({ url: WEBHOOK_URL });
+// 🌟 LIVE CHANNEL & WEBHOOK ROUTING 🌟
+const STAFF_VERIFICATION_CHANNEL_ID = "1519216751844524152"; 
+
+// Webhook A: Only handles /buy claims and approvals
+const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519216835537666068/OE1oPJqmGai0Rypr3BdVORrB_S1Olo6Hv3IFRlv3ezPXj5k91cpn7RNx-6MQ65R-QkyU";
+const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
+
+// Webhook B: Back to your original general command auditing webhook
+const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
+const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
 /* =========================
    SHOP LINKS & PRICING
@@ -103,7 +108,8 @@ async function sendActionLog(actionName, executor, descriptionFields = []) {
       )
       .setTimestamp();
 
-    await logger.send({ embeds: [logEmbed] });
+    // Sends general auditing logs back to Webhook B
+    await generalLogger.send({ embeds: [logEmbed] });
   } catch (err) {
     console.error("❌ Failed to send webhook log:", err);
   }
@@ -418,17 +424,12 @@ bot.on("interactionCreate", async interaction => {
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        const staffChannel = await bot.channels.fetch(STAFF_VERIFICATION_CHANNEL_ID);
-        if (!staffChannel) {
-          return interaction.editReply({ content: "❌ Setup Error: Staff review channel missing." });
-        }
-
         // Smart Fraud Verification: Did they state the correct amount?
-        let alertColor = 0xF59E0B; // Default Amber
+        let alertColor = 0xF59E0B; 
         let fraudWarning = "";
 
         if (userClaimedAmount !== config.expectedCost) {
-          alertColor = 0xFF0000; // Bright Red for Fraud Warning
+          alertColor = 0xFF0000; 
           fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${config.expectedCost}** card, but the user typed **$${userClaimedAmount}**! Double check carefully.`;
         }
 
@@ -455,7 +456,8 @@ bot.on("interactionCreate", async interaction => {
             .setStyle(ButtonStyle.Danger)
         );
 
-        await staffChannel.send({ embeds: [ticketEmbed], components: [row] });
+        // 🎯 Rerouted directly to buyLogger Webhook A to separate channels
+        await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
 
         return interaction.editReply({ 
           content: "✅ **Voucher successfully logged!** Your key code has been routed straight to our staff verification deck. You will automatically receive a direct DM with your system license as soon as it clears." 
