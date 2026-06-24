@@ -179,13 +179,13 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
   ]);
 }
 
-// 🎮 Roblox User ID Fetcher Helper (UPDATED FOR HIGHER COMPATIBILITY)
+// 🎮 Roblox Precise User ID Lookup
 async function getRobloxUserId(username) {
   try {
     const response = await fetch("https://users.roblox.com/v1/usernames/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
+      body: JSON.stringify({ usernames: [username.trim()], excludeBannedUsers: false })
     });
     const data = await response.json();
     if (data && data.data && data.data.length > 0) {
@@ -198,13 +198,15 @@ async function getRobloxUserId(username) {
   }
 }
 
-// 🎮 Roblox Gamepass Ownership Checker Helper
+// 🎮 Fixed Public Inventory Page Gamepass Verification Lookup
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/3/${gamepassId}`);
+    const response = await fetch(`https://inventory.roblox.com/v2/users/${robloxUserId}/inventory?assetTypes=GamePass&limit=100&sortOrder=Desc`);
     const data = await response.json();
-    if (data && data.data && data.data.length > 0) {
-      return true; 
+    
+    if (data && data.data) {
+      // Direct asset validation map
+      return data.data.some(item => String(item.assetId) === String(gamepassId));
     }
     return false;
   } catch (err) {
@@ -560,30 +562,30 @@ bot.on("interactionCreate", async interaction => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      // 1. Get Roblox User ID (Using new precise lookup endpoint)
+      // 1. Get Roblox User ID
       const robloxUserId = await getRobloxUserId(robloxUsername);
       if (!robloxUserId) {
         return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
       }
 
-      // 2. Check Ownership status
+      // 2. Check Ownership status via v2 direct list matching
       const ownsPass = await checkGamepassOwnership(robloxUserId, config.gamepassId);
       if (!ownsPass) {
         return interaction.editReply({ 
-          content: `❌ **Verification Failed:** The account \`${robloxUsername}\` does not own the required Gamepass in their inventory.\n\n*Note: Make sure your Roblox settings have your Inventory Privacy set to Public so the bot can read it!*` 
+          content: `❌ **Verification Failed:** The account \`${robloxUsername}\` does not own the required Gamepass in their inventory.\n\n*Note: Make sure your Roblox settings have your Inventory Privacy set to Public so the bot can see it!*` 
         });
       }
 
-      // 3. Make sure they haven't already used this account or don't already have an active key
+      // 3. Prevent structural active lifetime overrides
       const keyExists = await LicenseKey.findOne({ userId: interaction.user.id });
       if (keyExists && !keyExists.expires) {
         return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
       }
 
-      // 4. Everything matches! Issue key instantly
+      // 4. Automation check cleared: Deliver key instantly
       await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`);
 
-      // 5. Send Log to staff channels automatically
+      // 5. Fire automated validation log card
       const robuxLog = new EmbedBuilder()
         .setTitle("🎮 Automated Robux License Verification")
         .setColor(0x00FF7F)
