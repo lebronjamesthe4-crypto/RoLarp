@@ -48,7 +48,7 @@ const LicenseKey = mongoose.model("LicenseKey", KeySchema);
 /* =========================
    DISCORD CONFIG
 ========================= */
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || "MTUwnzU0MTMzMzIxOTM0ODU3MA.G66V16.0InUUPu78Cj1UJr1TjV8841_JkEAPgMBvETHHY";
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN || "MTUwNzU0MTMzMzIxOTM0ODU3MA.G9SIDJ.Nn2qoDw3UQXZ1I7oaoBjCN-uEzauGL9DmNBzZU";
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
