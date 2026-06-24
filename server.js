@@ -62,11 +62,11 @@ const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
 // 🌟 LIVE CHANNEL & WEBHOOK ROUTING 🌟
 // Webhook A: Handles manual voucher staff claims & automated Roblox receipt logs
-const BUY_TICKET_WEBHOOK_URL = "[https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO](https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO)";
+const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 
 // Webhook B: Handles general management command audits
-const GENERAL_LOG_WEBHOOK_URL = "[https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir](https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir)";
+const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
 /* =========================
@@ -76,28 +76,28 @@ const TIER_CONFIG = {
   "7days": {
     name: "Weekly",
     expectedCost: "3",
-    link: "[https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140](https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140)",
+    link: "https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140",
     gamepassId: "1873036358",
-    gamepassLink: "[https://www.roblox.com/game-pass/1873036358/Weekly-Key](https://www.roblox.com/game-pass/1873036358/Weekly-Key)"
+    gamepassLink: "https://www.roblox.com/game-pass/1873036358/Weekly-Key"
   },
   "1month": {
     name: "Monthly",
     expectedCost: "9",
-    link: "[https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081](https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081)",
+    link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081",
     gamepassId: "1891480404",
-    gamepassLink: "[https://www.roblox.com/game-pass/1891480404/Monthly-Key](https://www.roblox.com/game-pass/1891480404/Monthly-Key)"
+    gamepassLink: "https://www.roblox.com/game-pass/1891480404/Monthly-Key"
   },
   "lifetime": {
     name: "Lifetime",
     expectedCost: "20",
-    link: "[https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011](https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011)",
+    link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011",
     gamepassId: "1883628287",
-    gamepassLink: "[https://www.roblox.com/game-pass/1883628287/Lifetime-Key](https://www.roblox.com/game-pass/1883628287/Lifetime-Key)"
+    gamepassLink: "https://www.roblox.com/game-pass/1883628287/Lifetime-Key"
   }
 };
 
-const DOWNLOAD_LINK = "[https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file](https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file)";
-const SETUP_LINK = "[https://discordapp.com/channels/1507127260547645610/1507521673262534716](https://discordapp.com/channels/1507127260547645610/1507521673262534716)";
+const DOWNLOAD_LINK = "https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file";
+const SETUP_LINK = "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
 /* =========================
    HELPER FUNCTIONS
@@ -458,7 +458,7 @@ bot.on("interactionCreate", async interaction => {
   /* --- MODAL INPUT SUBMISSION RECEIVER --- */
   if (interaction.isModalSubmit()) {
     
-    // 🎒 METHOD A: FULLY AUTOMATED ROBLOX SYSTEM
+    // 🎒 METHOD A: FULLY AUTOMATED ROBLOX SYSTEM (WITH DEEP PROXY BYPASS)
     if (interaction.customId.startsWith("buy_modal_roblox_")) {
       const duration = interaction.customId.split("_")[3];
       const robloxUsername = interaction.fields.getTextInputValue("roblox_username_input").trim();
@@ -467,16 +467,21 @@ bot.on("interactionCreate", async interaction => {
       await interaction.deferReply({ ephemeral: true });
 
       try {
+        // High-availability public proxy setup to avoid hosting center IP bans from Roblox endpoints
+        const ROBLOX_PROXY = "roproxy.com"; 
+
         // 1. Convert username to a Roblox User ID
-        const userRes = await fetch("[https://users.roblox.com/v1/usernames/users](https://users.roblox.com/v1/usernames/users)", {
+        const userRes = await fetch(`https://users.${ROBLOX_PROXY}/v1/usernames/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ usernames: [robloxUsername], excludeBannedUsers: false })
         });
+        
+        if (!userRes.ok) throw new Error(`Roblox Account Lookup Server responded with code: ${userRes.status}`);
         const userData = await userRes.json();
 
         if (!userData.data || userData.data.length === 0) {
-          return interaction.editReply({ content: `❌ Could not find an active Roblox account named \`${robloxUsername}\`. Check spelling!` });
+          return interaction.editReply({ content: `❌ Could not find an active Roblox account named \`${robloxUsername}\`. Check your spelling configuration.` });
         }
 
         const robloxId = userData.data[0].id;
@@ -485,18 +490,19 @@ bot.on("interactionCreate", async interaction => {
         // 2. Exploit prevention check: Ensure this specific Roblox ID hasn't generated a key before
         const duplicateRobloxCheck = await LicenseKey.findOne({ robloxId: robloxId.toString() });
         if (duplicateRobloxCheck) {
-          return interaction.editReply({ content: `❌ This Roblox account (\`${realUsername}\`) has already been used to claim a license key. Multi-claims are blocked.` });
+          return interaction.editReply({ content: `❌ This Roblox account (\`${realUsername}\`) has already been used to claim a license key. Duplicate claims are prohibited.` });
         }
 
         // 3. Query inventory validation status to confirm ownership
-        const invRes = await fetch(`https://inventory.roblox.com/v1/users/${robloxId}/items/GamePass/${config.gamepassId}`);
-        const invData = await invRes.json();
+        const invRes = await fetch(`https://inventory.${ROBLOX_PROXY}/v1/users/${robloxId}/items/GamePass/${config.gamepassId}`);
+        if (!invRes.ok) throw new Error(`Roblox Inventory Database Server responded with code: ${invRes.status}`);
         
+        const invData = await invRes.json();
         const ownsPass = invData.data && invData.data.length > 0;
 
         if (!ownsPass) {
           return interaction.editReply({ 
-            content: `❌ **Verification Failed!**\n\n\`\`\`❌ NOT OWNED: The specified gamepass could not be found in your inventory.\`\`\`\nMake sure your Roblox privacy settings are configured to **Public Inventory** so our system can look up your purchased items!` 
+            content: `❌ **Verification Failed!**\n\n\`\`\`❌ NOT OWNED: The specified gamepass could not be found in your inventory.\`\`\`\nMake sure your Roblox privacy settings are configured to **Public Inventory** so our bot can inspect your items!` 
           });
         }
 
@@ -507,7 +513,7 @@ bot.on("interactionCreate", async interaction => {
         const logEmbed = new EmbedBuilder()
           .setTitle("⚡ Automated Roblox Purchase Verified")
           .setColor(0x00FF00)
-          .setDescription("The system successfully scanned a valid Gamepass purchase and granted credentials automatically.")
+          .setDescription("The system successfully verified a valid Gamepass item transfer and provisioned credentials.")
           .addFields(
             { name: "👤 Discord Client", value: `${interaction.user} (\`${interaction.user.id}\`)` },
             { name: "🎮 Roblox Profile", value: `[${realUsername}](https://www.roblox.com/users/${robloxId}/profile) (\`${robloxId}\`)` },
@@ -523,8 +529,10 @@ bot.on("interactionCreate", async interaction => {
         });
 
       } catch (err) {
-        console.error("Roblox checking pipeline crash:", err);
-        return interaction.editReply({ content: "❌ Internal system pipeline failure verifying Roblox purchase. Reach out to management." });
+        console.error("🚨 ROBLOX AUTOMATION PIPELINE CRASH:", err.message);
+        return interaction.editReply({ 
+          content: `❌ **Internal system pipeline failure.**\nDetails: \`${err.message}\`\nPlease contact management with this diagnostic snippet.` 
+        });
       }
     }
 
