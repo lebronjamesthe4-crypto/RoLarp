@@ -46,9 +46,9 @@ const KeySchema = new mongoose.Schema({
 const LicenseKey = mongoose.model("LicenseKey", KeySchema);
 
 /* =========================
-   DISCORD CONFIG
+   DISCORD CONFIG (Hardcoded Token Target)
 ========================= */
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const DISCORD_TOKEN = "MTUwNzU0MTMzMzIxOTM0ODU3MA.Gk7al8.ohInnPSrsk8kJLVFYdyBPLy0zInXCPSX6dSmAE";
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
@@ -205,18 +205,18 @@ app.post("/validate", async (req, res) => {
 });
 
 /* =========================
-   DISCORD BOT
+   DISCORD BOT INTERFACE
 ========================= */
 const bot = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
 bot.once("ready", () => {
-  console.log(`✅ Logged in as ${bot.user.tag}`);
+  console.log(`✅ Logged in successfully as ${bot.user.tag}`);
 });
 
 /* =========================
-   SLASH COMMANDS REGISTRATION (Safeguarded)
+   SLASH COMMANDS REGISTRATION
 ========================= */
 const commands = [
   new SlashCommandBuilder()
@@ -271,7 +271,6 @@ const commands = [
     .addStringOption(option => option.setName("key").setDescription("Key code string target").setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// 🛡️ Safe REST Check wrapper to prevent crash loops
 if (DISCORD_TOKEN) {
   const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
   (async () => {
@@ -283,8 +282,6 @@ if (DISCORD_TOKEN) {
       console.error("❌ Command registration failed:", err.message);
     }
   })();
-} else {
-  console.log("⚠️ Warning: DISCORD_TOKEN environment variable not loaded yet.");
 }
 
 /* =========================
