@@ -1,4 +1,3 @@
-require('dotenv').config(); // Make sure this is at the very top for Render variables
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
