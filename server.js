@@ -59,14 +59,14 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-// 🌟 LIVE CHANNEL & WEBHOOK ROUTING 🌟
+// 🌟 LIVE CHANNEL & NEW WEBHOOK ROUTING 🌟
 const STAFF_VERIFICATION_CHANNEL_ID = "1519216751844524152"; 
 
-// Webhook A: Only handles /buy claims and approvals
-const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519216835537666068/OE1oPJqmGai0Rypr3BdVORrB_S1Olo6Hv3IFRlv3ezPXj5k91cpn7RNx-6MQ65R-QkyU";
+// Webhook A: Handles your /buy claims and approval logs (Updated to your new webhook)
+const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 
-// Webhook B: Back to your original general command auditing webhook
+// Webhook B: Handles regular management command audits (/genkey, /revokekey)
 const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
@@ -108,7 +108,6 @@ async function sendActionLog(actionName, executor, descriptionFields = []) {
       )
       .setTimestamp();
 
-    // Sends general auditing logs back to Webhook B
     await generalLogger.send({ embeds: [logEmbed] });
   } catch (err) {
     console.error("❌ Failed to send webhook log:", err);
@@ -158,6 +157,7 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
     const targetUser = await bot.users.fetch(userId);
     await targetUser.send({ embeds: [dmEmbed] });
 
+    // ⚡ Auto-assign Customer Role to the target user
     const guild = await bot.guilds.fetch(GUILD_ID);
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
@@ -329,8 +329,9 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
+      // Fires generateAndDeliverKey helper which automatically grants CUSTOMER_ROLE_ID
       await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff");
-      return interaction.reply({ content: `✅ Key generated and sent to <@${targetUser.id}>`, ephemeral: true });
+      return interaction.reply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>`, ephemeral: true });
     }
 
     // /LICENSE COMMAND
@@ -424,7 +425,6 @@ bot.on("interactionCreate", async interaction => {
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        // Smart Fraud Verification: Did they state the correct amount?
         let alertColor = 0xF59E0B; 
         let fraudWarning = "";
 
@@ -456,7 +456,7 @@ bot.on("interactionCreate", async interaction => {
             .setStyle(ButtonStyle.Danger)
         );
 
-        // 🎯 Rerouted directly to buyLogger Webhook A to separate channels
+        // Dispatches right to Webhook A
         await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
 
         return interaction.editReply({ 
