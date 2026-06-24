@@ -62,7 +62,7 @@ const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 // 🌟 LIVE CHANNEL & NEW WEBHOOK ROUTING 🌟
 const STAFF_VERIFICATION_CHANNEL_ID = "1519216751844524152"; 
 
-// Webhook A: Handles your /buy claims and approval logs (Updated to your new webhook)
+// Webhook A: Handles your /buy claims and approval logs
 const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 
@@ -202,10 +202,10 @@ async function getRobloxUserId(username) {
   }
 }
 
-// 🎮 Roblox Gamepass Ownership Checker Helper (Updated to pass type 3)
+// 🎮 Roblox Gamepass Ownership Checker Helper (FIXED ROBLOX RESTRICTION BYPASS)
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    // Uses type '3' for gamepass assets to bypass the new 403 inventory block restrictions
+    // 🌟 Uses asset type '3' via the public items endpoint to cleanly bypass the 403 inventory lock restriction
     const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/3/${gamepassId}`);
     const data = await response.json();
     if (data && data.data && data.data.length > 0) {
@@ -585,7 +585,7 @@ bot.on("interactionCreate", async interaction => {
         return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
       }
 
-      // 4. Everything matches! Issue key instantly
+      // 4. Everything matches! Issue key instantly (this sets Customer role & fires DM)
       await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`);
 
       // 5. Send Log to staff channels automatically
