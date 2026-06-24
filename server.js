@@ -184,7 +184,7 @@ const commands = [
     .addStringOption(option =>
       option.setName("reason")
         .setDescription("Reason for generating this key (Staff Logs)")
-        .setRequired(false) // 👈 Added optional reason text box
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()
@@ -206,11 +206,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName("revokekey")
-    .setDescription("Revoke a user's license")
-    .addUserOption(option =>
-      option.setName("user")
-        .setDescription("User")
-        .setRequired(true)
+    .setDescription("Revoke a specific license key")
+    .addStringOption(option =>
+      option.setName("key")
+        .setDescription("The license key you want to permanently revoke")
+        .setRequired(true) // 👈 Changed option type to an explicit text field
     )
 ].map(cmd => cmd.toJSON());
 
@@ -255,7 +255,7 @@ bot.on("interactionCreate", async interaction => {
 
     const targetUser = interaction.options.getUser("user");
     const duration = interaction.options.getString("duration");
-    const reasonText = interaction.options.getString("reason") || "No reason provided."; // 👈 Fallback text
+    const reasonText = interaction.options.getString("reason") || "No reason provided.";
 
     const key = "LARP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
 
@@ -316,12 +316,11 @@ bot.on("interactionCreate", async interaction => {
       console.log("❌ Could not DM user");
     }
 
-    // Log action to Webhook with the optional reason field
     await sendActionLog("genkey", interaction.user, [
       { name: "🎯 For User", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
       { name: "🔑 Generated Key", value: `\`${key}\``, inline: true },
       { name: "⏱️ Duration", value: duration, inline: true },
-      { name: "📝 Reason Given", value: reasonText, inline: false } // 👈 Included in the audit log embed
+      { name: "📝 Reason Given", value: reasonText, inline: false }
     ]);
 
     return interaction.reply({ embeds: [channelEmbed] });
@@ -480,44 +479,51 @@ bot.on("interactionCreate", async interaction => {
       });
     }
 
-    const targetUser = interaction.options.getUser("user");
-    const foundKey = await LicenseKey.findOne({ userId: targetUser.id });
+    const inputKey = interaction.options.getString("key"); // 👈 Capture text key instead of user mention
+    const normalizedKey = inputKey.trim().toUpperCase();
+
+    const foundKey = await LicenseKey.findOne({ key: normalizedKey });
 
     if (!foundKey) {
       return interaction.reply({
-        content: "❌ No key found for that user",
+        content: `❌ Could not find the license key: \`${normalizedKey}\``,
         ephemeral: true
       });
     }
 
-    const revokedKey = foundKey.key;
-    await LicenseKey.deleteOne({ userId: targetUser.id });
+    const assignedUserId = foundKey.userId;
+    await LicenseKey.deleteOne({ key: normalizedKey });
 
+    // Attempt to DM the user if they're still in the guild
     try {
-      await targetUser.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle("❌ License Revoked")
-            .setDescription("Your RoLarp license has been revoked.")
-            .addFields({ name: "🔑 Revoked Key", value: `\`${revokedKey}\`` })
-            .setColor(0x1E3A8A)
-        ]
-      });
+      const targetUser = await bot.users.fetch(assignedUserId);
+      if (targetUser) {
+        await targetUser.send({
+          embeds: [
+            new EmbedBuilder()
+              .setTitle("❌ License Revoked")
+              .setDescription("Your RoLarp license has been revoked.")
+              .addFields({ name: "🔑 Revoked Key", value: `\`${normalizedKey}\`` })
+              .setColor(0x1E3A8A)
+          ]
+        });
+      }
     } catch {
-      console.log("❌ Could not DM revoked user");
+      console.log("❌ Could not DM user (User left the server or has DMs off)");
     }
 
+    // Log action to Webhook
     await sendActionLog("revokekey", interaction.user, [
-      { name: "🎯 Revoked From", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
-      { name: "🔑 Key Destroyed", value: `\`${revokedKey}\``, inline: true }
+      { name: "🔑 Key Destroyed", value: `\`${normalizedKey}\``, inline: true },
+      { name: "👤 Original Key Owner", value: `<@${assignedUserId}>`, inline: true }
     ]);
 
     return interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setTitle("✅ License Revoked")
-          .setDescription(`${targetUser}'s license was revoked.`)
-          .addFields({ name: "🔑 Revoked Key", value: `\`${revokedKey}\`` })
+          .setDescription(`License key \`${normalizedKey}\` was successfully destroyed.`)
+          .addFields({ name: "👤 Original Owner ID", value: `<@${assignedUserId}> (\`${assignedUserId}\`)` })
           .setColor(0x1E3A8A)
       ]
     });
