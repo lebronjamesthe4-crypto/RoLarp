@@ -29,13 +29,13 @@ const PORT = process.env.PORT || 3000;
 /* =========================
    MONGODB
 ========================= */
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(process.env.MONGO_URI || "mongodb+srv://braxakaD1:5P3MuihDfiyCLU@rolarp.32myf7e.mongodb.net/?appName=RoLarp")
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.error("MongoDB error:", err));
 
 const KeySchema = new mongoose.Schema({
   userId: String,       // Discord User ID
-  robloxId: String,     // Roblox User ID (Tracked to prevent multi-claims)
+  robloxId: String,     // Roblox User ID
   key: String,
   expires: Number,
   duration: String,
@@ -48,7 +48,7 @@ const LicenseKey = mongoose.model("LicenseKey", KeySchema);
 /* =========================
    DISCORD CONFIG
 ========================= */
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN || "MTUwnzU0MTMzMzIxOTM0ODU3MA.G66V16.0InUUPu78Cj1UJr1TjV8841_JkEAPgMBvETHHY";
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
@@ -60,17 +60,9 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-// 🌟 LIVE CHANNEL & WEBHOOK ROUTING (SECURED WITH ENVIRONMENT CRASH GUARDS) 🌟
-const BUY_TICKET_WEBHOOK_URL = process.env.BUY_TICKET_WEBHOOK_URL;
-const GENERAL_LOG_WEBHOOK_URL = process.env.GENERAL_LOG_WEBHOOK_URL;
-
-if (!BUY_TICKET_WEBHOOK_URL || !GENERAL_LOG_WEBHOOK_URL) {
-  console.error("==========================================================================");
-  console.error("🚨 CRITICAL STOP: Webhook URLs are totally missing from your environment variables!");
-  console.error("Make sure BUY_TICKET_WEBHOOK_URL and GENERAL_LOG_WEBHOOK_URL are set up in Render.");
-  console.error("==========================================================================");
-  process.exit(1); 
-}
+// 🌟 LIVE CHANNEL & WEBHOOK ROUTING (WITH DIRECT INLINE STRINGS FALLBACK) 🌟
+const BUY_TICKET_WEBHOOK_URL = process.env.BUY_TICKET_WEBHOOK_URL || "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
+const GENERAL_LOG_WEBHOOK_URL = process.env.GENERAL_LOG_WEBHOOK_URL || "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
@@ -169,7 +161,6 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
     const targetUser = await bot.users.fetch(userId);
     await targetUser.send({ embeds: [dmEmbed] });
 
-    // ⚡ Auto-assign Customer Role to the target user
     const guild = await bot.guilds.fetch(GUILD_ID);
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
@@ -297,10 +288,7 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
    MAIN INTERACTION DISPATCHER
 ========================= */
 bot.on("interactionCreate", async interaction => {
-  
   if (interaction.isChatInputCommand()) {
-
-    // /BUY COMMAND WITH MODAL DUAL INTEGRATION
     if (interaction.commandName === "buy") {
       const duration = interaction.options.getString("duration");
       const method = interaction.options.getString("method");
@@ -370,7 +358,6 @@ bot.on("interactionCreate", async interaction => {
       }
     }
 
-    // /GENKEY COMMAND
     if (interaction.commandName === "genkey") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
       if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
@@ -382,7 +369,6 @@ bot.on("interactionCreate", async interaction => {
       return interaction.reply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>`, ephemeral: true });
     }
 
-    // /LICENSE COMMAND
     if (interaction.commandName === "license") {
       const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
       if (!foundKey) return interaction.reply({ content: "❌ No license found", ephemeral: true });
@@ -404,7 +390,6 @@ bot.on("interactionCreate", async interaction => {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // /RESETHWID COMMAND
     if (interaction.commandName === "resethwid") {
       const inputKey = interaction.options.getString("key");
       const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
@@ -435,7 +420,6 @@ bot.on("interactionCreate", async interaction => {
       return interaction.reply({ content: "✅ HWID reset successful.", ephemeral: true });
     }
 
-    // /KEYS COMMAND
     if (interaction.commandName === "keys") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
       if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
@@ -446,7 +430,6 @@ bot.on("interactionCreate", async interaction => {
       return interaction.reply({ content: formatted || "No keys found", ephemeral: true });
     }
 
-    // /REVOKEKEY COMMAND
     if (interaction.commandName === "revokekey") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
       if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
@@ -461,10 +444,7 @@ bot.on("interactionCreate", async interaction => {
     }
   }
 
-  /* --- MODAL INPUT SUBMISSION RECEIVER --- */
   if (interaction.isModalSubmit()) {
-    
-    // 🎒 METHOD A: FULLY AUTOMATED ROBLOX SYSTEM (WITH DEEP PROXY BYPASS)
     if (interaction.customId.startsWith("buy_modal_roblox_")) {
       const duration = interaction.customId.split("_")[3];
       const robloxUsername = interaction.fields.getTextInputValue("roblox_username_input").trim();
@@ -475,7 +455,6 @@ bot.on("interactionCreate", async interaction => {
       try {
         const ROBLOX_PROXY = "roproxy.com"; 
 
-        // 1. Convert username to a Roblox User ID
         const userRes = await fetch(`https://users.${ROBLOX_PROXY}/v1/usernames/users`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -486,19 +465,17 @@ bot.on("interactionCreate", async interaction => {
         const userData = await userRes.json();
 
         if (!userData.data || userData.data.length === 0) {
-          return interaction.editReply({ content: `❌ Could not find an active Roblox account named \`${robloxUsername}\`. Check your spelling configuration.` });
+          return interaction.editReply({ content: `❌ Could not find an active Roblox account named \`${robloxUsername}\`.` });
         }
 
         const robloxId = userData.data[0].id;
         const realUsername = userData.data[0].name;
 
-        // 2. Exploit prevention check: Ensure this specific Roblox ID hasn't generated a key before
         const duplicateRobloxCheck = await LicenseKey.findOne({ robloxId: robloxId.toString() });
         if (duplicateRobloxCheck) {
-          return interaction.editReply({ content: `❌ This Roblox account (\`${realUsername}\`) has already been used to claim a license key. Duplicate claims are prohibited.` });
+          return interaction.editReply({ content: `❌ This Roblox account (\`${realUsername}\`) has already been used to claim a license key.` });
         }
 
-        // 3. Query inventory validation status to confirm ownership
         const invRes = await fetch(`https://inventory.${ROBLOX_PROXY}/v1/users/${robloxId}/items/GamePass/${config.gamepassId}`);
         if (!invRes.ok) throw new Error(`Roblox Inventory Database Server responded with code: ${invRes.status}`);
         
@@ -507,41 +484,37 @@ bot.on("interactionCreate", async interaction => {
 
         if (!ownsPass) {
           return interaction.editReply({ 
-            content: `❌ **Verification Failed!**\n\n\`\`\`❌ NOT OWNED: The specified gamepass could not be found in your inventory.\`\`\`\nMake sure your Roblox privacy settings are configured to **Public Inventory** so our bot can inspect your items!` 
+            content: `❌ **Verification Failed!**\n\n\`\`\`❌ NOT OWNED: The specified gamepass could not be found in your inventory.\`\`\`\nMake sure your Roblox privacy settings are configured to **Public Inventory**.` 
           });
         }
 
-        // 4. Verification Succeeded! Automate key provisioning, role assignment, and DMs instantly.
         await generateAndDeliverKey(interaction.user.id, duration, `Automated-Roblox (${realUsername})`, robloxId.toString());
 
-        // 5. Fire automated log card to Webhook A for staff monitoring
         const logEmbed = new EmbedBuilder()
           .setTitle("⚡ Automated Roblox Purchase Verified")
           .setColor(0x00FF00)
-          .setDescription("The system successfully verified a valid Gamepass item transfer and provisioned credentials.")
+          .setDescription("The system successfully verified a valid Gamepass item transfer.")
           .addFields(
             { name: "👤 Discord Client", value: `${interaction.user} (\`${interaction.user.id}\`)` },
             { name: "🎮 Roblox Profile", value: `[${realUsername}](https://www.roblox.com/users/${robloxId}/profile) (\`${robloxId}\`)` },
-            { name: "⏱️ Product Distributed", value: `${config.name.toUpperCase()} License Pass`, inline: true },
-            { name: "🛡️ Automated Status Check", value: `\`\`\`✅ VERIFIED: User owns this Gamepass! Key and Customer role auto-delivered.\`\`\`` }
+            { name: "⏱️ Product Distributed", value: `${config.name.toUpperCase()} License Pass`, inline: true }
           )
           .setTimestamp();
 
         await buyLogger.send({ embeds: [logEmbed] });
 
         return interaction.editReply({ 
-          content: "🎉 **Purchase Verified Successfully!** Your system license key has been instantly generated, your Customer rank has been applied, and setup instructions have been dropped directly into your DMs!" 
+          content: "🎉 **Purchase Verified Successfully!** Your system license key has been instantly generated and sent to your DMs!" 
         });
 
       } catch (err) {
         console.error("🚨 ROBLOX AUTOMATION PIPELINE CRASH:", err.message);
         return interaction.editReply({ 
-          content: `❌ **Internal system pipeline failure.**\nDetails: \`${err.message}\`\nPlease contact management with this diagnostic snippet.` 
+          content: `❌ **Internal system pipeline failure.**\nDetails: \`${err.message}\`` 
         });
       }
     }
 
-    // 🛒 METHOD B: MANUAL VOUCHER SYSTEM
     if (interaction.customId.startsWith("buy_modal_voucher_")) {
       const duration = interaction.customId.split("_")[3];
       const codeValue = interaction.fields.getTextInputValue("voucher_code_input").trim();
@@ -556,13 +529,13 @@ bot.on("interactionCreate", async interaction => {
 
         if (userClaimedAmount !== config.expectedCost) {
           alertColor = 0xFF0000; 
-          fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${config.expectedCost}** card, but the user typed **$${userClaimedAmount}**! Double check carefully.`;
+          fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${config.expectedCost}** card, but the user typed **$${userClaimedAmount}**!`;
         }
 
         const ticketEmbed = new EmbedBuilder()
           .setTitle("🎟️ New Voucher Verification Request")
           .setColor(alertColor)
-          .setDescription(`A user has submitted a checkout code token.${fraudWarning}\n\n*Make sure to copy the code below and look at its true value on Rewarble before clicking Approve!*`)
+          .setDescription(`A user has submitted a checkout code token.${fraudWarning}`)
           .addFields(
             { name: "👤 User Account", value: `${interaction.user} (\`${interaction.user.id}\`)` },
             { name: "⏱️ Tier Wanted", value: `${config.name.toUpperCase()} ($${config.expectedCost})`, inline: true },
@@ -585,17 +558,16 @@ bot.on("interactionCreate", async interaction => {
         await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
 
         return interaction.editReply({ 
-          content: "✅ **Voucher successfully logged!** Your key code has been routed straight to our staff verification deck. You will automatically receive a direct DM with your system license as soon as it clears." 
+          content: "✅ **Voucher successfully logged!** Your key code has been routed straight to our staff verification deck." 
         });
 
       } catch (err) {
         console.error("Modal submission pipeline crash:", err);
-        return interaction.editReply({ content: "❌ Failed routing submission data pack. Reach out to management." });
+        return interaction.editReply({ content: "❌ Failed routing submission data pack." });
       }
     }
   }
 
-  /* --- STAFF BUTTON MANIPULATOR PIPELINE --- */
   if (interaction.isButton()) {
     const parts = interaction.customId.split("_");
     if (parts[0] !== "v") return; 
@@ -616,7 +588,7 @@ bot.on("interactionCreate", async interaction => {
       try {
         const customerUser = await bot.users.fetch(targetUserId);
         if (customerUser) {
-          await customerUser.send("❌ **Payment Rejected:** The code voucher input you passed was verified as **invalid**, **empty**, or **already redeemed** on the payout network.");
+          await customerUser.send("❌ **Payment Rejected:** The code voucher input you passed was verified as invalid.");
         }
       } catch {}
       return interaction.followUp({ content: `🛑 **Reject:** Blocked payment assertion claim from <@${targetUserId}>.` });
