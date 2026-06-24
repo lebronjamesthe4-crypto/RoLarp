@@ -59,9 +59,6 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-// 🌟 LIVE CHANNEL & NEW WEBHOOK ROUTING 🌟
-const STAFF_VERIFICATION_CHANNEL_ID = "1519216751844524152"; 
-
 // Webhook A: Handles your /buy claims and approval logs
 const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
@@ -166,7 +163,6 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
     const targetUser = await bot.users.fetch(userId);
     await targetUser.send({ embeds: [dmEmbed] });
 
-    // ⚡ Auto-assign Customer Role to the target user
     const guild = await bot.guilds.fetch(GUILD_ID);
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) {
@@ -183,13 +179,13 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
   ]);
 }
 
-// 🎮 Roblox User ID Fetcher Helper
+// 🎮 Roblox User ID Fetcher Helper (UPDATED FOR HIGHER COMPATIBILITY)
 async function getRobloxUserId(username) {
   try {
-    const response = await fetch("https://users.roblox.com/v1/users/search", {
+    const response = await fetch("https://users.roblox.com/v1/usernames/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: username, limit: 1 })
+      body: JSON.stringify({ usernames: [username], excludeBannedUsers: false })
     });
     const data = await response.json();
     if (data && data.data && data.data.length > 0) {
@@ -197,15 +193,14 @@ async function getRobloxUserId(username) {
     }
     return null;
   } catch (err) {
-    console.error("Roblox User Search error:", err);
+    console.error("Roblox User API error:", err);
     return null;
   }
 }
 
-// 🎮 Roblox Gamepass Ownership Checker Helper (FIXED ROBLOX RESTRICTION BYPASS)
+// 🎮 Roblox Gamepass Ownership Checker Helper
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    // 🌟 Uses asset type '3' via the public items endpoint to cleanly bypass the 403 inventory lock restriction
     const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/3/${gamepassId}`);
     const data = await response.json();
     if (data && data.data && data.data.length > 0) {
@@ -565,7 +560,7 @@ bot.on("interactionCreate", async interaction => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      // 1. Get Roblox User ID
+      // 1. Get Roblox User ID (Using new precise lookup endpoint)
       const robloxUserId = await getRobloxUserId(robloxUsername);
       if (!robloxUserId) {
         return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
@@ -585,7 +580,7 @@ bot.on("interactionCreate", async interaction => {
         return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
       }
 
-      // 4. Everything matches! Issue key instantly (this sets Customer role & fires DM)
+      // 4. Everything matches! Issue key instantly
       await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`);
 
       // 5. Send Log to staff channels automatically
