@@ -10,7 +10,7 @@ const {
   REST,
   Routes,
   EmbedBuilder,
-  WebhookClient // 👈 Added WebhookClient for logging
+  WebhookClient
 } = require("discord.js");
 
 const app = express();
@@ -67,7 +67,7 @@ async function sendActionLog(actionName, executor, descriptionFields = []) {
   try {
     const logEmbed = new EmbedBuilder()
       .setTitle(`🤖 Command Log: /${actionName}`)
-      .setColor(0x00FF00) // Green color for logs
+      .setColor(0x00FF00)
       .addFields(
         { name: "👤 Executed By", value: `${executor} (\`${executor.id}\`)`, inline: false },
         ...descriptionFields
@@ -180,6 +180,11 @@ const commands = [
           { name: "1 Month", value: "1month" },
           { name: "Lifetime", value: "lifetime" }
         )
+    )
+    .addStringOption(option =>
+      option.setName("reason")
+        .setDescription("Reason for generating this key (Staff Logs)")
+        .setRequired(false) // 👈 Added optional reason text box
     ),
 
   new SlashCommandBuilder()
@@ -250,6 +255,7 @@ bot.on("interactionCreate", async interaction => {
 
     const targetUser = interaction.options.getUser("user");
     const duration = interaction.options.getString("duration");
+    const reasonText = interaction.options.getString("reason") || "No reason provided."; // 👈 Fallback text
 
     const key = "LARP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
 
@@ -310,11 +316,12 @@ bot.on("interactionCreate", async interaction => {
       console.log("❌ Could not DM user");
     }
 
-    // Log action to Webhook
+    // Log action to Webhook with the optional reason field
     await sendActionLog("genkey", interaction.user, [
       { name: "🎯 For User", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
       { name: "🔑 Generated Key", value: `\`${key}\``, inline: true },
-      { name: "⏱️ Duration", value: duration, inline: true }
+      { name: "⏱️ Duration", value: duration, inline: true },
+      { name: "📝 Reason Given", value: reasonText, inline: false } // 👈 Included in the audit log embed
     ]);
 
     return interaction.reply({ embeds: [channelEmbed] });
@@ -348,7 +355,6 @@ bot.on("interactionCreate", async interaction => {
       )
       .setTimestamp();
 
-    // Log action to Webhook
     await sendActionLog("license", interaction.user, [
       { name: "ℹ️ Action", value: "Checked their own license status.", inline: false }
     ]);
@@ -415,7 +421,6 @@ bot.on("interactionCreate", async interaction => {
     
     await foundKey.save();
 
-    // Log action to Webhook
     await sendActionLog("resethwid", interaction.user, [
       { name: "🔑 Key Impacted", value: `\`${foundKey.key}\``, inline: true },
       { name: "👤 Key Holder ID", value: `<@${foundKey.userId}>`, inline: true },
@@ -451,7 +456,6 @@ bot.on("interactionCreate", async interaction => {
       return `🔑 ${k.key}\n👤 <@${k.userId}>\n📅 ${expires}\n🖥️ ${k.hwid ? "Bound" : "Unbound"}\n`;
     }).join("\n");
 
-    // Log action to Webhook
     await sendActionLog("keys", interaction.user, [
       { name: "ℹ️ Action", value: "Viewed the active key log list.", inline: false }
     ]);
@@ -503,7 +507,6 @@ bot.on("interactionCreate", async interaction => {
       console.log("❌ Could not DM revoked user");
     }
 
-    // Log action to Webhook
     await sendActionLog("revokekey", interaction.user, [
       { name: "🎯 Revoked From", value: `${targetUser} (\`${targetUser.id}\`)`, inline: true },
       { name: "🔑 Key Destroyed", value: `\`${revokedKey}\``, inline: true }
