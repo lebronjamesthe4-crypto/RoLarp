@@ -77,17 +77,26 @@ const TIER_CONFIG = {
   "7days": {
     name: "Weekly",
     expectedCost: "3",
-    link: "https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140"
+    link: "https://www.g2a.com/paypal-gift-card-3-usd-by-rewarble-global-i10000339995140",
+    robuxPrice: "450",
+    gamepassId: "1873036358",
+    gamepassLink: "https://www.roblox.com/game-pass/1873036358/Weekly-Key"
   },
   "1month": {
     name: "Monthly",
     expectedCost: "9",
-    link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081"
+    link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081",
+    robuxPrice: "900",
+    gamepassId: "1891480404",
+    gamepassLink: "https://www.roblox.com/game-pass/1891480404/Monthly-Key"
   },
   "lifetime": {
     name: "Lifetime",
     expectedCost: "20",
-    link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011"
+    link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011",
+    robuxPrice: "1900",
+    gamepassId: "1883628287",
+    gamepassLink: "https://www.roblox.com/game-pass/1883628287/Lifetime-Key"
   }
 };
 
@@ -174,6 +183,40 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual")
   ]);
 }
 
+// 🎮 Roblox User ID Fetcher Helper
+async function getRobloxUserId(username) {
+  try {
+    const response = await fetch("https://users.roblox.com/v1/users/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword: username, limit: 1 })
+    });
+    const data = await response.json();
+    if (data && data.data && data.data.length > 0) {
+      return data.data[0].id;
+    }
+    return null;
+  } catch (err) {
+    console.error("Roblox User Search error:", err);
+    return null;
+  }
+}
+
+// 🎮 Roblox Gamepass Ownership Checker Helper
+async function checkGamepassOwnership(robloxUserId, gamepassId) {
+  try {
+    const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/GamePass/${gamepassId}`);
+    const data = await response.json();
+    if (data && data.data && data.data.length > 0) {
+      return true; // Item exists in user inventory arrays
+    }
+    return false;
+  } catch (err) {
+    console.error("Roblox Inventory Gamepass Check error:", err);
+    return false;
+  }
+}
+
 /* =========================
    EXPRESS API
 ========================= */
@@ -206,7 +249,7 @@ app.post("/validate", async (req, res) => {
    DISCORD BOT
 ========================= */
 const bot = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
 bot.once("ready", () => {
@@ -228,6 +271,20 @@ const commands = [
           { name: "7 Days (Weekly - $3)", value: "7days" },
           { name: "1 Month (Monthly - $9)", value: "1month" },
           { name: "Lifetime Pass ($20)", value: "lifetime" }
+        )
+    ),
+
+  new SlashCommandBuilder()
+    .setName("claimrobux")
+    .setDescription("Auto-claim your license key via Roblox Gamepass purchase verification")
+    .addStringOption(option =>
+      option.setName("duration")
+        .setDescription("Select the gamepass duration tier you purchased")
+        .setRequired(true)
+        .addChoices(
+          { name: "7 Days (Weekly - 450 Robux)", value: "7days" },
+          { name: "1 Month (Monthly - 900 Robux)", value: "1month" },
+          { name: "Lifetime Pass (1900 Robux)", value: "lifetime" }
         )
     ),
 
@@ -321,23 +378,58 @@ bot.on("interactionCreate", async interaction => {
       return interaction.showModal(modal);
     }
 
+    // /CLAIMROBUX COMMAND WITH MODAL TRIGGER
+    if (interaction.commandName === "claimrobux") {
+      const duration = interaction.options.getString("duration");
+      const config = TIER_CONFIG[duration];
+
+      const modal = new ModalBuilder()
+        .setCustomId(`robux_modal_${duration}`)
+        .setTitle(`🎮 Claim ${config.name} Pass (${config.robuxPrice} Robux)`);
+
+      const robloxInput = new TextInputBuilder()
+        .setCustomId("roblox_username_input")
+        .setLabel("Enter your EXACT Roblox Username:")
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("Enter your corporate real username (Not Display Name)")
+        .setMinLength(3)
+        .setMaxLength(20)
+        .setRequired(true);
+
+      const noticeLinkInput = new TextInputBuilder()
+        .setCustomId("gamepass_notice")
+        .setLabel("Roblox Gamepass Purchase Link:")
+        .setStyle(TextInputStyle.Short)
+        .setValue(config.gamepassLink)
+        .setRequired(false);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(noticeLinkInput),
+        new ActionRowBuilder().addComponents(robloxInput)
+      );
+
+      return interaction.showModal(modal);
+    }
+
+    // --- DEFER OTHER SYSTEM COMMANDS SAFELY ---
+    await interaction.deferReply({ ephemeral: true });
+
     // /GENKEY COMMAND
     if (interaction.commandName === "genkey") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
-      if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
+      if (!allowed) return interaction.editReply({ content: "❌ No permission" });
 
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      // Fires generateAndDeliverKey helper which automatically grants CUSTOMER_ROLE_ID
       await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff");
-      return interaction.reply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>`, ephemeral: true });
+      return interaction.editReply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>` });
     }
 
     // /LICENSE COMMAND
     if (interaction.commandName === "license") {
       const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
-      if (!foundKey) return interaction.reply({ content: "❌ No license found", ephemeral: true });
+      if (!foundKey) return interaction.editReply({ content: "❌ No license found" });
 
       const expired = foundKey.expires && Date.now() > foundKey.expires;
       const expiresText = foundKey.expires ? new Date(foundKey.expires).toLocaleDateString() : "Never";
@@ -353,7 +445,7 @@ bot.on("interactionCreate", async interaction => {
         )
         .setTimestamp();
 
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return interaction.editReply({ embeds: [embed] });
     }
 
     // /RESETHWID COMMAND
@@ -361,21 +453,21 @@ bot.on("interactionCreate", async interaction => {
       const inputKey = interaction.options.getString("key");
       const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
-      if (inputKey && !isStaff) return interaction.reply({ content: "❌ No permission.", ephemeral: true });
+      if (inputKey && !isStaff) return interaction.editReply({ content: "❌ No permission." });
 
       let foundKey;
       if (inputKey) {
         foundKey = await LicenseKey.findOne({ key: inputKey.trim().toUpperCase() });
-        if (!foundKey) return interaction.reply({ content: "❌ Key not found.", ephemeral: true });
+        if (!foundKey) return interaction.editReply({ content: "❌ Key not found." });
       } else {
         foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
-        if (!foundKey) return interaction.reply({ content: "❌ No key found on your account.", ephemeral: true });
+        if (!foundKey) return interaction.editReply({ content: "❌ No key found on your account." });
 
         if (!isStaff) {
           const cooldown = 24 * 60 * 60 * 1000;
           if (Date.now() - (foundKey.lastReset || 0) < cooldown) {
             const remaining = cooldown - (Date.now() - foundKey.lastReset);
-            return interaction.reply({ content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours.`, ephemeral: true });
+            return interaction.editReply({ content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours.` });
           }
         }
       }
@@ -384,37 +476,39 @@ bot.on("interactionCreate", async interaction => {
       if (!inputKey && !isStaff) foundKey.lastReset = Date.now();
       await foundKey.save();
 
-      return interaction.reply({ content: "✅ HWID reset successful.", ephemeral: true });
+      return interaction.editReply({ content: "✅ HWID reset successful." });
     }
 
     // /KEYS COMMAND
     if (interaction.commandName === "keys") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
-      if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
+      if (!allowed) return interaction.editReply({ content: "❌ No permission" });
 
       const keys = await LicenseKey.find().limit(20);
       const formatted = keys.map(k => `🔑 ${k.key}\n👤 <@${k.userId}>\n📅 ${k.expires ? new Date(k.expires).toLocaleDateString() : "Never"}\n`).join("\n");
 
-      return interaction.reply({ content: formatted || "No keys found", ephemeral: true });
+      return interaction.editReply({ content: formatted || "No keys found" });
     }
 
     // /REVOKEKEY COMMAND
     if (interaction.commandName === "revokekey") {
       const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
-      if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
+      if (!allowed) return interaction.editReply({ content: "❌ No permission" });
 
       const normalizedKey = interaction.options.getString("key").trim().toUpperCase();
       const foundKey = await LicenseKey.findOne({ key: normalizedKey });
 
-      if (!foundKey) return interaction.reply({ content: "❌ Key not found.", ephemeral: true });
+      if (!foundKey) return interaction.editReply({ content: "❌ Key not found." });
 
       await LicenseKey.deleteOne({ key: normalizedKey });
-      return interaction.reply({ content: `✅ License key \`${normalizedKey}\` destroyed.`, ephemeral: true });
+      return interaction.editReply({ content: `✅ License key \`${normalizedKey}\` destroyed.` });
     }
   }
 
   /* --- MODAL INPUT SUBMISSION RECEIVER --- */
   if (interaction.isModalSubmit()) {
+    
+    // G2A Voucher Pipeline
     if (interaction.customId.startsWith("buy_modal_")) {
       const duration = interaction.customId.split("_")[2];
       const codeValue = interaction.fields.getTextInputValue("voucher_code_input").trim();
@@ -446,17 +540,10 @@ bot.on("interactionCreate", async interaction => {
           .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`v_approve_${interaction.user.id}_${duration}`)
-            .setLabel("✅ Valid (Issue Key)")
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId(`v_deny_${interaction.user.id}`)
-            .setLabel("❌ Fake / Wrong Amount")
-            .setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId(`v_approve_${interaction.user.id}_${duration}`).setLabel("✅ Valid (Issue Key)").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`v_deny_${interaction.user.id}`).setLabel("❌ Fake / Wrong Amount").setStyle(ButtonStyle.Danger)
         );
 
-        // Dispatches right to Webhook A
         await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
 
         return interaction.editReply({ 
@@ -467,6 +554,53 @@ bot.on("interactionCreate", async interaction => {
         console.error("Modal submission pipeline crash:", err);
         return interaction.editReply({ content: "❌ Failed routing submission data pack. Reach out to management." });
       }
+    }
+
+    // AUTOMATED Roblox Gamepass Claims
+    if (interaction.customId.startsWith("robux_modal_")) {
+      const duration = interaction.customId.split("_")[2];
+      const robloxUsername = interaction.fields.getTextInputValue("roblox_username_input").trim();
+      const config = TIER_CONFIG[duration];
+
+      await interaction.deferReply({ ephemeral: true });
+
+      // 1. Get Roblox User ID
+      const robloxUserId = await getRobloxUserId(robloxUsername);
+      if (!robloxUserId) {
+        return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
+      }
+
+      // 2. Check Ownership status
+      const ownsPass = await checkGamepassOwnership(robloxUserId, config.gamepassId);
+      if (!ownsPass) {
+        return interaction.editReply({ 
+          content: `❌ **Verification Failed:** The account \`${robloxUsername}\` does not own the required Gamepass in their inventory.\n\n*Note: Make sure your Roblox settings have your Inventory Privacy set to Public so the bot can read it!*` 
+        });
+      }
+
+      // 3. Make sure they haven't already used this account or don't already have an active key
+      const keyExists = await LicenseKey.findOne({ userId: interaction.user.id });
+      if (keyExists && !keyExists.expires) {
+        return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
+      }
+
+      // 4. Everything matches! Issue key instantly
+      await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`);
+
+      // 5. Send Log to staff channels automatically
+      const robuxLog = new EmbedBuilder()
+        .setTitle("🎮 Automated Robux License Verification")
+        .setColor(0x00FF7F)
+        .addFields(
+          { name: "👤 Discord User", value: `${interaction.user} (\`${interaction.user.id}\`)` },
+          { name: "🖥️ Roblox Account", value: `\`${robloxUsername}\` (${robloxUserId})` },
+          { name: "🎟️ Pass Claimed", value: `**${config.name}** (${config.robuxPrice} Robux)` }
+        )
+        .setTimestamp();
+
+      await buyLogger.send({ embeds: [robuxLog] });
+
+      return interaction.editReply({ content: `🎉 **Success!** Your purchase was verified. Your license key has been auto-generated and sent straight to your DMs!` });
     }
   }
 
