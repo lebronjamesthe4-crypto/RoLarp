@@ -48,7 +48,7 @@ const LicenseKey = mongoose.model("LicenseKey", KeySchema);
 /* =========================
    DISCORD CONFIG (Hardcoded Token Target)
 ========================= */
-const DISCORD_TOKEN = "MTUwNzU0MTMzMzIxOTM0ODU3MA.Gk7al8.ohInnPSrsk8kJLVFYdyBPLy0zInXCPSX6dSmAE";
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
