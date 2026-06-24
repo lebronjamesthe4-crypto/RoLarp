@@ -27,15 +27,15 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 /* =========================
-   MONGODB
+   MONGODB (With Fallback String Built-In)
 ========================= */
 mongoose.connect(process.env.MONGO_URI || "mongodb+srv://braxakaD1:5P3MuihDfiyCLU@rolarp.32myf7e.mongodb.net/?appName=RoLarp")
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.error("MongoDB error:", err));
 
 const KeySchema = new mongoose.Schema({
-  userId: String,       // Discord User ID
-  robloxId: String,     // Roblox User ID
+  userId: String,       
+  robloxId: String,     
   key: String,
   expires: Number,
   duration: String,
@@ -48,7 +48,7 @@ const LicenseKey = mongoose.model("LicenseKey", KeySchema);
 /* =========================
    DISCORD CONFIG
 ========================= */
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || "MTUwnzU0MTMzMzIxOTM0ODU3MA.G66V16.0InUUPu78Cj1UJr1TjV8841_JkEAPgMBvETHHY";
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 
 const CLIENT_ID = "1507541333219348570";
 const GUILD_ID = "1507127260547645610";
@@ -60,11 +60,10 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-// 🌟 LIVE CHANNEL & WEBHOOK ROUTING 🌟
-const BUY_TICKET_WEBHOOK_URL = process.env.BUY_TICKET_WEBHOOK_URL || "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
-const GENERAL_LOG_WEBHOOK_URL = process.env.GENERAL_LOG_WEBHOOK_URL || "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
-
+const BUY_TICKET_WEBHOOK_URL = "https://discord.com/api/webhooks/1519217845970538517/EkS7jMhdS9kPpIgdWXHseLn5H4oODTlueHF2K2hS3X03I71IeRToq8dfjjdEEDYcFeRO";
 const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
+
+const GENERAL_LOG_WEBHOOK_URL = "https://discord.com/api/webhooks/1519131205088448644/Qqg0scKQyXUDL06h6dp3nJJvVcV0RAaA2JZTIcUk9SvLJKMMQYqQhmhKWak-RDhXw3ir";
 const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
 /* =========================
@@ -217,7 +216,7 @@ bot.once("ready", () => {
 });
 
 /* =========================
-   SLASH COMMANDS REGISTRATION
+   SLASH COMMANDS REGISTRATION (Safeguarded)
 ========================= */
 const commands = [
   new SlashCommandBuilder()
@@ -272,17 +271,21 @@ const commands = [
     .addStringOption(option => option.setName("key").setDescription("Key code string target").setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-
-(async () => {
-  try {
-    console.log("🔄 Registering commands...");
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log("✅ Commands successfully injected");
-  } catch (err) {
-    console.error(err);
-  }
-})();
+// 🛡️ Safe REST Check wrapper to prevent crash loops
+if (DISCORD_TOKEN) {
+  const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+  (async () => {
+    try {
+      console.log("🔄 Registering commands...");
+      await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+      console.log("✅ Commands successfully injected");
+    } catch (err) {
+      console.error("❌ Command registration failed:", err.message);
+    }
+  })();
+} else {
+  console.log("⚠️ Warning: DISCORD_TOKEN environment variable not loaded yet.");
+}
 
 /* =========================
    MAIN INTERACTION DISPATCHER
@@ -290,16 +293,10 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 bot.on("interactionCreate", async interaction => {
   try {
     if (interaction.isChatInputCommand()) {
-      
-      // --- BUY COMMAND ---
       if (interaction.commandName === "buy") {
         const duration = interaction.options.getString("duration");
         const method = interaction.options.getString("method");
         const config = TIER_CONFIG[duration];
-
-        if (!config) {
-          return interaction.reply({ content: "❌ Invalid tier configuration selected.", ephemeral: true });
-        }
 
         if (method === "roblox") {
           const modal = new ModalBuilder()
@@ -310,12 +307,10 @@ bot.on("interactionCreate", async interaction => {
             .setCustomId("roblox_username_input")
             .setLabel("Your Roblox Username:")
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("Enter your exact Roblox username (NOT display name)")
+            .setPlaceholder("Enter exact Roblox username")
             .setRequired(true);
 
-          const firstActionRow = new ActionRowBuilder().addComponents(usernameInput);
-          modal.addComponents(firstActionRow);
-
+          modal.addComponents(new ActionRowBuilder().addComponents(usernameInput));
           return await interaction.showModal(modal);
         } else {
           const modal = new ModalBuilder()
@@ -326,42 +321,34 @@ bot.on("interactionCreate", async interaction => {
             .setCustomId("voucher_code_input")
             .setLabel("Paste your G2A / Rewarble Code Below:")
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("Paste your 16-digit voucher token code here...")
-            .setMinLength(10)
-            .setMaxLength(50)
+            .setPlaceholder("Paste 16-digit voucher here...")
             .setRequired(true);
 
           const amountInput = new TextInputBuilder()
             .setCustomId("voucher_amount_input")
             .setLabel(`Verify Card Value (Should be ${config.expectedCost}):`)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder(`Enter your card's dollar value (e.g. ${config.expectedCost})`)
-            .setMaxLength(3)
+            .setPlaceholder(`e.g. ${config.expectedCost}`)
             .setRequired(true);
 
-          const row1 = new ActionRowBuilder().addComponents(codeInput);
-          const row2 = new ActionRowBuilder().addComponents(amountInput);
-          modal.addComponents(row1, row2);
-
+          modal.addComponents(
+            new ActionRowBuilder().addComponents(codeInput),
+            new ActionRowBuilder().addComponents(amountInput)
+          );
           return await interaction.showModal(modal);
         }
       }
 
-      // --- GENKEY COMMAND ---
       if (interaction.commandName === "genkey") {
         const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
         if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
 
-        await interaction.deferReply({ ephemeral: true });
-
         const targetUser = interaction.options.getUser("user");
         const duration = interaction.options.getString("duration");
-        
         await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff");
-        return interaction.editReply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>` });
+        return interaction.reply({ content: `✅ Key sent to <@${targetUser.id}>`, ephemeral: true });
       }
 
-      // --- LICENSE COMMAND ---
       if (interaction.commandName === "license") {
         const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
         if (!foundKey) return interaction.reply({ content: "❌ No license found", ephemeral: true });
@@ -377,34 +364,29 @@ bot.on("interactionCreate", async interaction => {
             { name: "📅 Expires", value: expiresText, inline: true },
             { name: "✅ Status", value: expired ? "Expired" : "Active", inline: true },
             { name: "🖥️ HWID", value: foundKey.hwid || "Not Bound" }
-          )
-          .setTimestamp();
+          );
 
         return interaction.reply({ embeds: [embed], ephemeral: true });
       }
 
-      // --- RESETHWID COMMAND ---
       if (interaction.commandName === "resethwid") {
         const inputKey = interaction.options.getString("key");
         const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
 
         if (inputKey && !isStaff) return interaction.reply({ content: "❌ No permission.", ephemeral: true });
 
-        await interaction.deferReply({ ephemeral: true });
-
         let foundKey;
         if (inputKey) {
           foundKey = await LicenseKey.findOne({ key: inputKey.trim().toUpperCase() });
-          if (!foundKey) return interaction.editReply({ content: "❌ Key not found." });
+          if (!foundKey) return interaction.reply({ content: "❌ Key not found.", ephemeral: true });
         } else {
           foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
-          if (!foundKey) return interaction.editReply({ content: "❌ No key found on your account." });
+          if (!foundKey) return interaction.reply({ content: "❌ No key found.", ephemeral: true });
 
           if (!isStaff) {
             const cooldown = 24 * 60 * 60 * 1000;
             if (Date.now() - (foundKey.lastReset || 0) < cooldown) {
-              const remaining = cooldown - (Date.now() - foundKey.lastReset);
-              return interaction.editReply({ content: `⏳ Wait ${Math.ceil(remaining / 3600000)} hours.` });
+              return interaction.reply({ content: "⏳ HWID reset is on cooldown.", ephemeral: true });
             }
           }
         }
@@ -412,39 +394,28 @@ bot.on("interactionCreate", async interaction => {
         foundKey.hwid = null;
         if (!inputKey && !isStaff) foundKey.lastReset = Date.now();
         await foundKey.save();
-
-        return interaction.editReply({ content: "✅ HWID reset successful." });
+        return interaction.reply({ content: "✅ HWID reset successful.", ephemeral: true });
       }
 
-      // --- KEYS COMMAND ---
       if (interaction.commandName === "keys") {
         const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
         if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
 
-        await interaction.deferReply({ ephemeral: true });
         const keys = await LicenseKey.find().limit(20);
-        const formatted = keys.map(k => `🔑 ${k.key}\n👤 <@${k.userId}>\n📅 ${k.expires ? new Date(k.expires).toLocaleDateString() : "Never"}\n`).join("\n");
-
-        return interaction.editReply({ content: formatted || "No keys found" });
+        const formatted = keys.map(k => `🔑 ${k.key} - <@${k.userId}>`).join("\n");
+        return interaction.reply({ content: formatted || "No keys found", ephemeral: true });
       }
 
-      // --- REVOKEKEY COMMAND ---
       if (interaction.commandName === "revokekey") {
         const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
         if (!allowed) return interaction.reply({ content: "❌ No permission", ephemeral: true });
 
-        await interaction.deferReply({ ephemeral: true });
         const normalizedKey = interaction.options.getString("key").trim().toUpperCase();
-        const foundKey = await LicenseKey.findOne({ key: normalizedKey });
-
-        if (!foundKey) return interaction.editReply({ content: "❌ Key not found." });
-
         await LicenseKey.deleteOne({ key: normalizedKey });
-        return interaction.editReply({ content: `✅ License key \`${normalizedKey}\` destroyed.` });
+        return interaction.reply({ content: `✅ Key destroyed.`, ephemeral: true });
       }
     }
 
-    // --- MODAL SUBMISSIONS ---
     if (interaction.isModalSubmit()) {
       if (interaction.customId.startsWith("buy_modal_roblox_")) {
         const duration = interaction.customId.split("_")[3];
@@ -452,7 +423,6 @@ bot.on("interactionCreate", async interaction => {
         const config = TIER_CONFIG[duration];
 
         await interaction.deferReply({ ephemeral: true });
-
         const ROBLOX_PROXY = "roproxy.com"; 
 
         const userRes = await fetch(`https://users.${ROBLOX_PROXY}/v1/usernames/users`, {
@@ -461,51 +431,35 @@ bot.on("interactionCreate", async interaction => {
           body: JSON.stringify({ usernames: [robloxUsername], excludeBannedUsers: false })
         });
         
-        if (!userRes.ok) throw new Error(`Roblox Account Lookup Server responded with code: ${userRes.status}`);
         const userData = await userRes.json();
-
         if (!userData.data || userData.data.length === 0) {
-          return interaction.editReply({ content: `❌ Could not find an active Roblox account named \`${robloxUsername}\`.` });
+          return interaction.editReply({ content: "❌ Roblox username not found." });
         }
 
         const robloxId = userData.data[0].id;
         const realUsername = userData.data[0].name;
 
-        const duplicateRobloxCheck = await LicenseKey.findOne({ robloxId: robloxId.toString() });
-        if (duplicateRobloxCheck) {
-          return interaction.editReply({ content: `❌ This Roblox account (\`${realUsername}\`) has already been used to claim a license key.` });
-        }
+        const duplicateCheck = await LicenseKey.findOne({ robloxId: robloxId.toString() });
+        if (duplicateCheck) return interaction.editReply({ content: "❌ This Roblox account already claimed a key." });
 
         const invRes = await fetch(`https://inventory.${ROBLOX_PROXY}/v1/users/${robloxId}/items/GamePass/${config.gamepassId}`);
-        if (!invRes.ok) throw new Error(`Roblox Inventory Database Server responded with code: ${invRes.status}`);
-        
         const invData = await invRes.json();
         const ownsPass = invData.data && invData.data.length > 0;
 
-        if (!ownsPass) {
-          return interaction.editReply({ 
-            content: `❌ **Verification Failed!**\n\n\`\`\`❌ NOT OWNED: The specified gamepass could not be found in your inventory.\`\`\`\nMake sure your Roblox privacy settings are configured to **Public Inventory**.` 
-          });
-        }
+        if (!ownsPass) return interaction.editReply({ content: "❌ Verification Failed! Gamepass not found in inventory." });
 
         await generateAndDeliverKey(interaction.user.id, duration, `Automated-Roblox (${realUsername})`, robloxId.toString());
 
         const logEmbed = new EmbedBuilder()
           .setTitle("⚡ Automated Roblox Purchase Verified")
           .setColor(0x00FF00)
-          .setDescription("The system successfully verified a valid Gamepass item transfer.")
           .addFields(
-            { name: "👤 Discord Client", value: `${interaction.user} (\`${interaction.user.id}\`)` },
-            { name: "🎮 Roblox Profile", value: `[${realUsername}](https://www.roblox.com/users/${robloxId}/profile) (\`${robloxId}\`)` },
-            { name: "⏱️ Product Distributed", value: `${config.name.toUpperCase()} License Pass`, inline: true }
-          )
-          .setTimestamp();
+            { name: "👤 User", value: `${interaction.user}` },
+            { name: "🎮 Roblox", value: realUsername }
+          );
 
         await buyLogger.send({ embeds: [logEmbed] });
-
-        return interaction.editReply({ 
-          content: "🎉 **Purchase Verified Successfully!** Your system license key has been instantly generated and sent to your DMs!" 
-        });
+        return interaction.editReply({ content: "🎉 **Verified!** Key generated and sent to DMs." });
       }
 
       if (interaction.customId.startsWith("buy_modal_voucher_")) {
@@ -516,93 +470,51 @@ bot.on("interactionCreate", async interaction => {
 
         await interaction.deferReply({ ephemeral: true });
 
-        let alertColor = 0xF59E0B; 
-        let fraudWarning = "";
-
-        if (userClaimedAmount !== config.expectedCost) {
-          alertColor = 0xFF0000; 
-          fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${config.expectedCost}** card, but the user typed **$${userClaimedAmount}**!`;
-        }
-
         const ticketEmbed = new EmbedBuilder()
-          .setTitle("🎟️ New Voucher Verification Request")
-          .setColor(alertColor)
-          .setDescription(`A user has submitted a checkout code token.${fraudWarning}`)
+          .setTitle("🎟️ New Voucher Request")
+          .setColor(0xF59E0B)
           .addFields(
-            { name: "👤 User Account", value: `${interaction.user} (\`${interaction.user.id}\`)` },
-            { name: "⏱️ Tier Wanted", value: `${config.name.toUpperCase()} ($${config.expectedCost})`, inline: true },
-            { name: "💵 User Stated Value", value: `**$${userClaimedAmount}**`, inline: true },
-            { name: "📋 Code (Click to Copy)", value: `\`${codeValue}\``, inline: false }
-          )
-          .setTimestamp();
+            { name: "👤 User", value: `${interaction.user}` },
+            { name: "📋 Code", value: `\`${codeValue}\`` }
+          );
 
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`v_approve_${interaction.user.id}_${duration}`)
-            .setLabel("✅ Valid (Issue Key)")
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId(`v_deny_${interaction.user.id}`)
-            .setLabel("❌ Fake / Wrong Amount")
-            .setStyle(ButtonStyle.Danger)
+          new ButtonBuilder().setCustomId(`v_approve_${interaction.user.id}_${duration}`).setLabel("✅ Approve").setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`v_deny_${interaction.user.id}`).setLabel("❌ Deny").setStyle(ButtonStyle.Danger)
         );
 
         await buyLogger.send({ embeds: [ticketEmbed], components: [row] });
-
-        return interaction.editReply({ 
-          content: "✅ **Voucher successfully logged!** Your key code has been routed straight to our staff verification deck." 
-        });
+        return interaction.editReply({ content: "✅ **Logged!** Sent to staff deck." });
       }
     }
 
-    // --- BUTTON ACTIONS ---
     if (interaction.isButton()) {
       const parts = interaction.customId.split("_");
       if (parts[0] !== "v") return; 
 
       const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
-      if (!isStaff) return interaction.reply({ content: "❌ Only authorized team accounts can interact with payment tickets.", ephemeral: true });
+      if (!isStaff) return interaction.reply({ content: "❌ Staff only.", ephemeral: true });
 
       const [ , action, targetUserId, duration] = parts;
-
       await interaction.update({ components: [] });
 
       if (action === "approve") {
         await generateAndDeliverKey(targetUserId, duration, "G2A-Voucher-Verified");
-        return interaction.followUp({ content: `⚡ **Clear:** Issued a **${duration}** access license token straight to <@${targetUserId}>.` });
+        return interaction.followUp({ content: "⚡ Issued key successfully." });
       }
-
       if (action === "deny") {
-        try {
-          const customerUser = await bot.users.fetch(targetUserId);
-          if (customerUser) {
-            await customerUser.send("❌ **Payment Rejected:** The code voucher input you passed was verified as invalid.");
-          }
-        } catch (err) {
-          console.log("Could not DM user regarding denial:", err.message);
-        }
-        return interaction.followUp({ content: `🛑 **Reject:** Blocked payment assertion claim from <@${targetUserId}>.` });
+        return interaction.followUp({ content: "🛑 Blocked claim." });
       }
     }
-
-  } catch (error) {
-    console.error("🚨 CRITICAL INTERACTION ERROR:", error);
-    
-    const errorMessage = `❌ **An internal error occurred while processing this command.**\nDetails: \`${error.message}\``;
-    
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: errorMessage }).catch(() => null);
-    } else {
-      await interaction.reply({ content: errorMessage, ephemeral: true }).catch(() => null);
-    }
+  } catch (err) {
+    console.error("Interaction error:", err);
   }
 });
 
-bot.login(DISCORD_TOKEN);
+if (DISCORD_TOKEN) {
+  bot.login(DISCORD_TOKEN).catch(err => console.error("Login crash:", err));
+}
 
-/* =========================
-   START EXPRESS SERVER
-========================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
