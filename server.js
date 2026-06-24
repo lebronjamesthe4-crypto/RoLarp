@@ -202,13 +202,14 @@ async function getRobloxUserId(username) {
   }
 }
 
-// 🎮 Roblox Gamepass Ownership Checker Helper
+// 🎮 Roblox Gamepass Ownership Checker Helper (Updated to pass type 3)
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/GamePass/${gamepassId}`);
+    // Uses type '3' for gamepass assets to bypass the new 403 inventory block restrictions
+    const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/3/${gamepassId}`);
     const data = await response.json();
     if (data && data.data && data.data.length > 0) {
-      return true; // Item exists in user inventory arrays
+      return true; 
     }
     return false;
   } catch (err) {
@@ -391,7 +392,7 @@ bot.on("interactionCreate", async interaction => {
         .setCustomId("roblox_username_input")
         .setLabel("Enter your EXACT Roblox Username:")
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder("Enter your corporate real username (Not Display Name)")
+        .setPlaceholder("Enter your real username (Not Display Name)")
         .setMinLength(3)
         .setMaxLength(20)
         .setRequired(true);
