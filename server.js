@@ -60,9 +60,20 @@ const SUPPORT_ROLE_ID = "1507128660048478288";
 
 const PERMITTED_ROLES = [ADMIN_ROLE_ID, MANAGEMENT_ROLE_ID, SUPPORT_ROLE_ID];
 
-// 🌟 LIVE CHANNEL & WEBHOOK ROUTING (SECURED VIA PROCESS.ENV) 🌟
-const buyLogger = new WebhookClient({ url: process.env.BUY_TICKET_WEBHOOK_URL });
-const generalLogger = new WebhookClient({ url: process.env.GENERAL_LOG_WEBHOOK_URL });
+// 🌟 LIVE CHANNEL & WEBHOOK ROUTING (SECURED WITH ENVIRONMENT CRASH GUARDS) 🌟
+const BUY_TICKET_WEBHOOK_URL = process.env.BUY_TICKET_WEBHOOK_URL;
+const GENERAL_LOG_WEBHOOK_URL = process.env.GENERAL_LOG_WEBHOOK_URL;
+
+if (!BUY_TICKET_WEBHOOK_URL || !GENERAL_LOG_WEBHOOK_URL) {
+  console.error("==========================================================================");
+  console.error("🚨 CRITICAL STOP: Webhook URLs are totally missing from your environment variables!");
+  console.error("Make sure BUY_TICKET_WEBHOOK_URL and GENERAL_LOG_WEBHOOK_URL are set up in Render.");
+  console.error("==========================================================================");
+  process.exit(1); 
+}
+
+const buyLogger = new WebhookClient({ url: BUY_TICKET_WEBHOOK_URL });
+const generalLogger = new WebhookClient({ url: GENERAL_LOG_WEBHOOK_URL });
 
 /* =========================
    SHOP LINKS & PRICING
