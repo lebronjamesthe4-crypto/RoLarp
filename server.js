@@ -83,6 +83,8 @@ const TIER_CONFIG = {
     name: "Monthly",
     expectedCost: "9",
     link: "https://www.g2a.com/paypal-gift-card-9-usd-by-rewarble-global-i10000339995081",
+    discountCost: "6",
+    discountLink: "https://www.g2a.com/paypal-gift-card-6-usd-by-rewarble-global-i10000339995079",
     robuxPrice: "900",
     gamepassId: "1891480404",
     gamepassLink: "https://www.roblox.com/game-pass/1891480404/Monthly-Key"
@@ -91,6 +93,8 @@ const TIER_CONFIG = {
     name: "Lifetime",
     expectedCost: "20",
     link: "https://www.g2a.com/paypal-gift-card-20-usd-by-rewarble-global-i10000339995011",
+    discountCost: "15",
+    discountLink: "https://www.g2a.com/paypal-gift-card-15-usd-by-rewarble-global-i10000339995026",
     robuxPrice: "1900",
     gamepassId: "1883628287",
     gamepassLink: "https://www.roblox.com/game-pass/1883628287/Lifetime-Key"
@@ -99,6 +103,8 @@ const TIER_CONFIG = {
 
 const DOWNLOAD_LINK = "https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file";
 const SETUP_LINK = "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
+
+const VALID_DISCOUNT_CODE = "ROLARP1K";
 
 /* =========================
    HELPER FUNCTIONS
@@ -120,7 +126,6 @@ async function sendActionLog(actionName, executor, descriptionFields = []) {
   }
 }
 
-// Added executor parameter to track who initiated the key generation
 async function generateAndDeliverKey(userId, duration, fundingSource = "Manual", executor = null) {
   const key = "LARP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
   let expires = null;
@@ -173,7 +178,6 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
     console.log(`❌ Couldn't execute user roles/DMs for ${userId}:`, err.message);
   }
 
-  // Use the provided executor or fallback to the target user (if self-claimed)
   const actionExecutor = executor || { id: userId, toString: () => `<@${userId}>` };
   await sendActionLog("license_provision", actionExecutor, [
     { name: "🎯 Target User", value: `<@${userId}> (\`${userId}\`)`, inline: false },
@@ -183,7 +187,6 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
   ]);
 }
 
-// 🎮 Roblox User ID Fetcher Helper
 async function getRobloxUserId(username) {
   try {
     const response = await fetch("https://users.roblox.com/v1/usernames/users", {
@@ -202,14 +205,11 @@ async function getRobloxUserId(username) {
   }
 }
 
-// 🎮 Fixed Roblox Inventory Gamepass Verification Lookup
 async function checkGamepassOwnership(robloxUserId, gamepassId) {
   try {
-    // Using the v1 specific item lookup to bypass the Asset 34 block
     const response = await fetch(`https://inventory.roblox.com/v1/users/${robloxUserId}/items/GamePass/${gamepassId}`);
     const data = await response.json();
     
-    // If the data array is returned and has content, they own it
     if (data && Array.isArray(data.data)) {
       return data.data.length > 0;
     }
@@ -275,6 +275,11 @@ const commands = [
           { name: "1 Month (Monthly - $9)", value: "1month" },
           { name: "Lifetime Pass ($20)", value: "lifetime" }
         )
+    )
+    .addStringOption(option =>
+      option.setName("discount")
+        .setDescription("Enter a promo/discount code if you have one")
+        .setRequired(false)
     ),
 
   new SlashCommandBuilder()
@@ -344,11 +349,19 @@ bot.on("interactionCreate", async interaction => {
     // /BUY COMMAND WITH MODAL TRIGGER
     if (interaction.commandName === "buy") {
       const duration = interaction.options.getString("duration");
+      const codeProvided = interaction.options.getString("discount")?.trim().toUpperCase();
       const config = TIER_CONFIG[duration];
 
+      // Determine pricing and URL based on discount code eligibility
+      const isDiscountValid = (codeProvided === VALID_DISCOUNT_CODE) && (duration !== "7days");
+      const targetedCost = isDiscountValid ? config.discountCost : config.expectedCost;
+      const targetedLink = isDiscountValid ? config.discountLink : config.link;
+
+      // Custom formatting identifier stored inside customId to maintain state across execution context
+      const isDiscountFlag = isDiscountValid ? "DISCOUNTED" : "STANDARD";
       const modal = new ModalBuilder()
-        .setCustomId(`buy_modal_${duration}`)
-        .setTitle(`🛒 Complete ${config.name} Pass ($${config.expectedCost})`);
+        .setCustomId(`buy_modal_${duration}_${isDiscountFlag}`)
+        .setTitle(`🛒 Complete ${config.name} Pass ($${targetedCost})`);
 
       const codeInput = new TextInputBuilder()
         .setCustomId("voucher_code_input")
@@ -361,9 +374,9 @@ bot.on("interactionCreate", async interaction => {
 
       const amountInput = new TextInputBuilder()
         .setCustomId("voucher_amount_input")
-        .setLabel(`Verify Card Value (Should be ${config.expectedCost}):`)
+        .setLabel(`Verify Card Value (Should be ${targetedCost}):`)
         .setStyle(TextInputStyle.Short)
-        .setPlaceholder(`Enter your card's dollar value (e.g. ${config.expectedCost})`)
+        .setPlaceholder(`Enter your card's dollar value (e.g. ${targetedCost})`)
         .setMaxLength(3)
         .setRequired(true);
 
@@ -371,7 +384,7 @@ bot.on("interactionCreate", async interaction => {
         .setCustomId("link_notice")
         .setLabel("G2A Shop Purchasing Link:")
         .setStyle(TextInputStyle.Short)
-        .setValue(config.link)
+        .setValue(targetedLink)
         .setRequired(false);
 
       modal.addComponents(
@@ -427,7 +440,6 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      // We pass interaction.user to track which staff member generated the key
       await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff", interaction.user);
       return interaction.editReply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>` });
     }
@@ -482,7 +494,6 @@ bot.on("interactionCreate", async interaction => {
       if (!inputKey && !isStaff) foundKey.lastReset = Date.now();
       await foundKey.save();
 
-      // Log the action with Target details
       await sendActionLog("resethwid", interaction.user, [
         { 
           name: "🎯 Target Reset", 
@@ -517,7 +528,6 @@ bot.on("interactionCreate", async interaction => {
 
       await LicenseKey.deleteOne({ key: normalizedKey });
       
-      // Log the revocation detailing who lost their key
       await sendActionLog("revokekey", interaction.user, [
         { name: "🗑️ Destroyed Key", value: `\`${normalizedKey}\``, inline: true },
         { name: "🎯 Original Owner", value: `<@${foundKey.userId}> (\`${foundKey.userId}\`)`, inline: true }
@@ -532,11 +542,15 @@ bot.on("interactionCreate", async interaction => {
     
     // G2A Voucher Pipeline
     if (interaction.customId.startsWith("buy_modal_")) {
-      const duration = interaction.customId.split("_")[2];
+      const modalParts = interaction.customId.split("_");
+      const duration = modalParts[2];
+      const isDiscounted = modalParts[3] === "DISCOUNTED";
+
       const codeValue = interaction.fields.getTextInputValue("voucher_code_input").trim();
       const userClaimedAmount = interaction.fields.getTextInputValue("voucher_amount_input").trim();
 
       const config = TIER_CONFIG[duration];
+      const expectedTargetValue = isDiscounted ? config.discountCost : config.expectedCost;
 
       await interaction.deferReply({ ephemeral: true });
 
@@ -544,9 +558,9 @@ bot.on("interactionCreate", async interaction => {
         let alertColor = 0xF59E0B; 
         let fraudWarning = "";
 
-        if (userClaimedAmount !== config.expectedCost) {
+        if (userClaimedAmount !== expectedTargetValue) {
           alertColor = 0xFF0000; 
-          fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${config.expectedCost}** card, but the user typed **$${userClaimedAmount}**! Double check carefully.`;
+          fraudWarning = `\n\n⚠️ **EXPECTED VALUE MISMATCH!**\nThis tier requires a **$${expectedTargetValue}** card, but the user typed **$${userClaimedAmount}**! Double check carefully.`;
         }
 
         const ticketEmbed = new EmbedBuilder()
@@ -555,7 +569,8 @@ bot.on("interactionCreate", async interaction => {
           .setDescription(`A user has submitted a checkout code token.${fraudWarning}\n\n*Make sure to copy the code below and look at its true value on Rewarble before clicking Approve!*`)
           .addFields(
             { name: "👤 User Account", value: `${interaction.user} (\`${interaction.user.id}\`)` },
-            { name: "⏱️ Tier Wanted", value: `${config.name.toUpperCase()} ($${config.expectedCost})`, inline: true },
+            { name: "⏱️ Tier Wanted", value: `${config.name.toUpperCase()} (${isDiscounted ? "DISCOUNT APPLIED" : "REGULAR PRICING"})`, inline: false },
+            { name: "💵 Target Value", value: `**$${expectedTargetValue}**`, inline: true },
             { name: "💵 User Stated Value", value: `**$${userClaimedAmount}**`, inline: true },
             { name: "📋 Code (Click to Copy)", value: `\`${codeValue}\``, inline: false }
           )
@@ -586,13 +601,11 @@ bot.on("interactionCreate", async interaction => {
 
       await interaction.deferReply({ ephemeral: true });
 
-      // 1. Get Roblox User ID
       const robloxUserId = await getRobloxUserId(robloxUsername);
       if (!robloxUserId) {
         return interaction.editReply({ content: `❌ Could not find a Roblox account matching the username \`${robloxUsername}\`. Please check your spelling.` });
       }
 
-      // 2. Check Ownership status via updated v1 endpoint
       const ownsPass = await checkGamepassOwnership(robloxUserId, config.gamepassId);
       if (!ownsPass) {
         return interaction.editReply({ 
@@ -600,16 +613,13 @@ bot.on("interactionCreate", async interaction => {
         });
       }
 
-      // 3. Prevent structural active lifetime overrides
       const keyExists = await LicenseKey.findOne({ userId: interaction.user.id });
       if (keyExists && !keyExists.expires) {
         return interaction.editReply({ content: "⚠️ You already have an active Lifetime license pass on this account!" });
       }
 
-      // 4. Automation check cleared: Deliver key instantly (Pass interaction.user as the executor)
       await generateAndDeliverKey(interaction.user.id, duration, `Roblox Gamepass (${robloxUsername})`, interaction.user);
 
-      // 5. Fire automated validation log card
       const robuxLog = new EmbedBuilder()
         .setTitle("🎮 Automated Robux License Verification")
         .setColor(0x00FF7F)
@@ -639,7 +649,6 @@ bot.on("interactionCreate", async interaction => {
     await interaction.update({ components: [] });
 
     if (action === "approve") {
-      // interaction.user is the staff clicking the button
       await generateAndDeliverKey(targetUserId, duration, "G2A-Voucher-Verified", interaction.user);
       return interaction.followUp({ content: `⚡ **Clear:** Issued a **${duration}** access license token straight to <@${targetUserId}>.` });
     }
