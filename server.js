@@ -185,6 +185,9 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
     { name: "⏱️ Duration", value: duration, inline: true },
     { name: "🧾 Method", value: fundingSource, inline: true }
   ]);
+  
+  // RETURN THE KEY so it can be used in the command replies
+  return key;
 }
 
 async function getRobloxUserId(username) {
@@ -440,8 +443,13 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff", interaction.user);
-      return interaction.editReply({ content: `✅ Key generated, Customer role assigned, and DM sent to <@${targetUser.id}>` });
+      // Capture the generated key from the helper function
+      const generatedKey = await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff", interaction.user);
+      
+      // Display the key directly in the reply
+      return interaction.editReply({ 
+        content: `✅ **Key successfully generated!**\n🔑 **License Key:** \`${generatedKey}\`\n\nCustomer role has been assigned and a copy was sent to <@${targetUser.id}>'s DMs.` 
+      });
     }
 
     // /LICENSE COMMAND
