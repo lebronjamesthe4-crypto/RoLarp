@@ -154,20 +154,26 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
 
   const dmEmbed = new EmbedBuilder()
     .setTitle("🔐 Your License Key Received!")
-    .setDescription("Thank you for your purchase! Your payment verification was approved.")
+    .setDescription("Thank you for your purchase! Your payment verification was approved. Click the button below to grab your product download.")
     .setColor(0x1E3A8A)
     .addFields(
       { name: "🔑 License Key", value: `\`${key}\`` },
       { name: "📅 Expires", value: expiresText },
-      { name: "⬇️ Download", value: DOWNLOAD_LINK },
       { name: "🛠️ Setup Guide", value: SETUP_LINK }
     )
     .setFooter({ text: "RoLarp Licensing" })
     .setTimestamp();
 
+  const downloadRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel("📥 Download RoLarp Product")
+      .setStyle(ButtonStyle.Link)
+      .setURL(DOWNLOAD_LINK)
+  );
+
   try {
     const targetUser = await bot.users.fetch(userId);
-    await targetUser.send({ embeds: [dmEmbed] });
+    await targetUser.send({ embeds: [dmEmbed], components: [downloadRow] });
 
     const guild = await bot.guilds.fetch(GUILD_ID);
     const member = await guild.members.fetch(userId).catch(() => null);
@@ -301,6 +307,10 @@ const commands = [
           { name: "Lifetime Pass (1900 Robux)", value: "lifetime" }
         )
     ),
+
+  new SlashCommandBuilder()
+    .setName("download")
+    .setDescription("Receive your RoLarp product download link if you have an active license"),
 
   new SlashCommandBuilder()
     .setName("genkey")
@@ -461,6 +471,33 @@ bot.on("interactionCreate", async interaction => {
 
     // --- DEFER OTHER SYSTEM COMMANDS SAFELY ---
     await interaction.deferReply({ ephemeral: true });
+
+    // /DOWNLOAD COMMAND
+    if (interaction.commandName === "download") {
+      const foundKey = await LicenseKey.findOne({ userId: interaction.user.id });
+      if (!foundKey) {
+        return interaction.editReply({ content: "❌ You do not have an active RoLarp license key. Purchase or claim one first!" });
+      }
+
+      if (foundKey.expires && Date.now() > foundKey.expires) {
+        return interaction.editReply({ content: "❌ Your RoLarp license has expired. Please renew your access to download." });
+      }
+
+      const downloadEmbed = new EmbedBuilder()
+        .setTitle("📥 RoLarp Product Download")
+        .setDescription("Your active license has been verified! Click the button below to get your product download package.")
+        .setColor(0x1E3A8A)
+        .setTimestamp();
+
+      const downloadRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel("Download RoLarp Tool")
+          .setStyle(ButtonStyle.Link)
+          .setURL(DOWNLOAD_LINK)
+      );
+
+      return interaction.editReply({ embeds: [downloadEmbed], components: [downloadRow] });
+    }
 
     // /GENKEY COMMAND
     if (interaction.commandName === "genkey") {
