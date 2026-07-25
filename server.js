@@ -186,7 +186,6 @@ async function generateAndDeliverKey(userId, duration, fundingSource = "Manual",
     { name: "🧾 Method", value: fundingSource, inline: true }
   ]);
   
-  // RETURN THE KEY so it can be used in the command replies
   return key;
 }
 
@@ -266,6 +265,10 @@ bot.once("ready", () => {
    SLASH COMMANDS REGISTRATION
 ========================= */
 const commands = [
+  new SlashCommandBuilder()
+    .setName("setup-hwid-panel")
+    .setDescription("Deploy the persistent HWID reset panel embed and button (Staff Only)"),
+
   new SlashCommandBuilder()
     .setName("buy")
     .setDescription("Purchase or redeem a pass tier access voucher")
@@ -349,18 +352,42 @@ bot.on("interactionCreate", async interaction => {
   
   if (interaction.isChatInputCommand()) {
 
+    // /SETUP-HWID-PANEL COMMAND
+    if (interaction.commandName === "setup-hwid-panel") {
+      const allowed = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
+      if (!allowed) return interaction.reply({ content: "❌ No permission.", ephemeral: true });
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const panelEmbed = new EmbedBuilder()
+        .setTitle("⚙️ RoLarp HWID Management Panel")
+        .setDescription("Need to reset your hardware ID for a new PC or device configuration? Click the button below to bring up the secure license reset prompt.\n\n*Note: Self-resets are subject to a standard 24-hour cooldown period.*")
+        .setColor(0x1E3A8A)
+        .setFooter({ text: "RoLarp Security Systems" })
+        .setTimestamp();
+
+      const resetButtonRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("persistent_open_hwid_modal")
+          .setLabel("Reset HWID")
+          .setStyle(ButtonStyle.Primary)
+          .setEmoji("🔄")
+      );
+
+      await interaction.channel.send({ embeds: [panelEmbed], components: [resetButtonRow] });
+      return interaction.editReply({ content: "✅ Persistent HWID Reset panel successfully deployed to this channel!" });
+    }
+
     // /BUY COMMAND WITH MODAL TRIGGER
     if (interaction.commandName === "buy") {
       const duration = interaction.options.getString("duration");
       const codeProvided = interaction.options.getString("discount")?.trim().toUpperCase();
       const config = TIER_CONFIG[duration];
 
-      // Determine pricing and URL based on discount code eligibility
       const isDiscountValid = (codeProvided === VALID_DISCOUNT_CODE) && (duration !== "7days");
       const targetedCost = isDiscountValid ? config.discountCost : config.expectedCost;
       const targetedLink = isDiscountValid ? config.discountLink : config.link;
 
-      // Custom formatting identifier stored inside customId to maintain state across execution context
       const isDiscountFlag = isDiscountValid ? "DISCOUNTED" : "STANDARD";
       const modal = new ModalBuilder()
         .setCustomId(`buy_modal_${duration}_${isDiscountFlag}`)
@@ -443,10 +470,8 @@ bot.on("interactionCreate", async interaction => {
       const targetUser = interaction.options.getUser("user");
       const duration = interaction.options.getString("duration");
       
-      // Capture the generated key from the helper function
       const generatedKey = await generateAndDeliverKey(targetUser.id, duration, "Manual-Staff", interaction.user);
       
-      // Display the key directly in the reply
       return interaction.editReply({ 
         content: `✅ **Key successfully generated!**\n🔑 **License Key:** \`${generatedKey}\`\n\nCustomer role has been assigned and a copy was sent to <@${targetUser.id}>'s DMs.` 
       });
@@ -548,6 +573,42 @@ bot.on("interactionCreate", async interaction => {
   /* --- MODAL INPUT SUBMISSION RECEIVER --- */
   if (interaction.isModalSubmit()) {
     
+    // Persistent HWID Reset Modal Submission
+    if (interaction.customId === "hwid_reset_modal_submission") {
+      const inputKey = interaction.fields.getTextInputValue("hwid_key_input").trim().toUpperCase();
+      await interaction.deferReply({ ephemeral: true });
+
+      const foundKey = await LicenseKey.findOne({ key: inputKey });
+      if (!foundKey) {
+        return interaction.editReply({ content: `❌ Could not find an active license matching key: \`${inputKey}\`` });
+      }
+
+      // Verify ownership or staff permissions
+      const isStaff = interaction.member.roles.cache.some(role => PERMITTED_ROLES.includes(role.id));
+      if (foundKey.userId !== interaction.user.id && !isStaff) {
+        return interaction.editReply({ content: "❌ You do not own this license key." });
+      }
+
+      // Check cooldown if user is not staff
+      if (!isStaff) {
+        const cooldown = 24 * 60 * 60 * 1000;
+        if (Date.now() - (foundKey.lastReset || 0) < cooldown) {
+          const remaining = cooldown - (Date.now() - foundKey.lastReset);
+          return interaction.editReply({ content: `⏳ Cooldown active. Please wait ${Math.ceil(remaining / 3600000)} hours before resetting your HWID again.` });
+        }
+      }
+
+      foundKey.hwid = null;
+      if (!isStaff) foundKey.lastReset = Date.now();
+      await foundKey.save();
+
+      await sendActionLog("resethwid", interaction.user, [
+        { name: "🎯 Target Reset (Panel)", value: `Key: \`${inputKey}\` (Owner: <@${foundKey.userId}>)`, inline: false }
+      ]);
+
+      return interaction.editReply({ content: `✅ **HWID Reset Successful!** Your license key \`${inputKey}\` has been unbound from its previous machine.` });
+    }
+
     // G2A Voucher Pipeline
     if (interaction.customId.startsWith("buy_modal_")) {
       const modalParts = interaction.customId.split("_");
@@ -646,6 +707,24 @@ bot.on("interactionCreate", async interaction => {
 
   /* --- STAFF BUTTON MANIPULATOR PIPELINE --- */
   if (interaction.isButton()) {
+    
+    // Handle Persistent Panel HWID Reset Modal Trigger
+    if (interaction.customId === "persistent_open_hwid_modal") {
+      const hwidModal = new ModalBuilder()
+        .setCustomId("hwid_reset_modal_submission")
+        .setTitle("🔄 Hardware ID (HWID) Reset");
+
+      const keyInput = new TextInputBuilder()
+        .setCustomId("hwid_key_input")
+        .setLabel("Enter your License Key:")
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder("LARP-XXXXXXXX")
+        .setRequired(true);
+
+      hwidModal.addComponents(new ActionRowBuilder().addComponents(keyInput));
+      return interaction.showModal(hwidModal);
+    }
+
     const parts = interaction.customId.split("_");
     if (parts[0] !== "v") return; 
 
