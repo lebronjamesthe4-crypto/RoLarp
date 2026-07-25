@@ -104,8 +104,8 @@ const TIER_CONFIG = {
 const DOWNLOAD_LINK = "https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file";
 const SETUP_LINK = "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
-// Replace with your uploaded logo image URL (or Discord attachment URL)
-const LOGO_IMAGE_URL = "https://chatgpt.com/backend-api/estuary/content?id=file_000000002ac4822f9d87e9f3fa1a9ed0&ts=495828&p=fs&cid=1&sig=03d249f958c6307b647af7156ec610561b31f229b5324b05280ce5c89ce963ea&v=0";
+// Your Syntra panel background image URL
+const LOGO_IMAGE_URL = "https://media.discordapp.net/attachments/1519123296195444756/1530547187308564490/51784584-c3a3-4ee7-803d-18871f333915.png?ex=6a65f8a5&is=6a64a725&hm=4f79fd2ed9814eab14e22c391ad918d59524259b34dd99ea3f58b20bbac1b470&=&format=webp&quality=lossless&width=1391&height=783";
 
 const VALID_DISCOUNT_CODE = "ROLARP1K";
 
