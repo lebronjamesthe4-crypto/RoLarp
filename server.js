@@ -104,6 +104,9 @@ const TIER_CONFIG = {
 const DOWNLOAD_LINK = "https://www.mediafire.com/file/ql3law6gk4tizfa/RoLarpV4_Larp_Tool.zip/file";
 const SETUP_LINK = "https://discordapp.com/channels/1507127260547645610/1507521673262534716";
 
+// Replace with your uploaded logo image URL (or Discord attachment URL)
+const LOGO_IMAGE_URL = "https://chatgpt.com/backend-api/estuary/content?id=file_000000002ac4822f9d87e9f3fa1a9ed0&ts=495828&p=fs&cid=1&sig=03d249f958c6307b647af7156ec610561b31f229b5324b05280ce5c89ce963ea&v=0";
+
 const VALID_DISCOUNT_CODE = "ROLARP1K";
 
 /* =========================
@@ -372,6 +375,7 @@ bot.on("interactionCreate", async interaction => {
       const panelEmbed = new EmbedBuilder()
         .setTitle("⚙️ RoLarp HWID Management Panel")
         .setDescription("Need to reset your hardware ID for a new PC or device configuration? Click the button below to bring up the secure license reset prompt.\n\n*Note: Self-resets are subject to a standard 24-hour cooldown period.*")
+        .setImage(LOGO_IMAGE_URL)
         .setColor(0x1E3A8A)
         .setFooter({ text: "RoLarp Security Systems" })
         .setTimestamp();
